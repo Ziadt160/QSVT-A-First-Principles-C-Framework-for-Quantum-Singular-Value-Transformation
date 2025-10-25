@@ -136,7 +136,7 @@ This is an ongoing personal project to explore QSVT internals and gate-level imp
 Acknowledgements
 ----------------
 
-- Uses Qrack for the quantum simulator backend (https://github.com/vmorgner/qrack)
+- Uses Qrack for the quantum simulator backend ([https://github.com/vmorgner/qrack](https://github.com/unitaryfoundation/qrack))
 - Eigen for linear algebra
 
 ---
