@@ -1,0 +1,9 @@
+# Ignore build directory
+/build/
+build/
+
+# Ignore Google Test repo(s)
+/gtest/
+/googletest/
+/third_party/googletest/
+/third_party/gtest/

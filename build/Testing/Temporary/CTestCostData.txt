@@ -1,0 +1,4 @@
+QrackGates.XGateSetsProbToOne 1 0.385172
+QrackMeasure.MeasureReturnsCorrectResult 1 0.312916
+QrackMeasure.ProbAfterMeasureIsOne 1 0.325004
+---

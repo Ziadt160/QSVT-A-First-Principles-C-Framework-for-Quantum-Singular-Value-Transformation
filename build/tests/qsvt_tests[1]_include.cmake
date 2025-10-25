@@ -1,0 +1,5 @@
+if(EXISTS "/home/ziad/QSVT_Project/build/tests/qsvt_tests[1]_tests.cmake")
+  include("/home/ziad/QSVT_Project/build/tests/qsvt_tests[1]_tests.cmake")
+else()
+  add_test(qsvt_tests_NOT_BUILT qsvt_tests_NOT_BUILT)
+endif()

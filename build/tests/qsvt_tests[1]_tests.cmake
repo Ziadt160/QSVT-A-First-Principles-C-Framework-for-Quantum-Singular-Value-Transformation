@@ -1,0 +1,7 @@
+add_test([=[QrackGates.XGateSetsProbToOne]=]  /home/ziad/QSVT_Project/build/tests/qsvt_tests [==[--gtest_filter=QrackGates.XGateSetsProbToOne]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[QrackGates.XGateSetsProbToOne]=]  PROPERTIES WORKING_DIRECTORY /home/ziad/QSVT_Project/build/tests SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[QrackMeasure.MeasureReturnsCorrectResult]=]  /home/ziad/QSVT_Project/build/tests/qsvt_tests [==[--gtest_filter=QrackMeasure.MeasureReturnsCorrectResult]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[QrackMeasure.MeasureReturnsCorrectResult]=]  PROPERTIES WORKING_DIRECTORY /home/ziad/QSVT_Project/build/tests SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+add_test([=[QrackMeasure.ProbAfterMeasureIsOne]=]  /home/ziad/QSVT_Project/build/tests/qsvt_tests [==[--gtest_filter=QrackMeasure.ProbAfterMeasureIsOne]==] --gtest_also_run_disabled_tests)
+set_tests_properties([=[QrackMeasure.ProbAfterMeasureIsOne]=]  PROPERTIES WORKING_DIRECTORY /home/ziad/QSVT_Project/build/tests SKIP_REGULAR_EXPRESSION [==[\[  SKIPPED \]]==])
+set(  qsvt_tests_TESTS QrackGates.XGateSetsProbToOne QrackMeasure.MeasureReturnsCorrectResult QrackMeasure.ProbAfterMeasureIsOne)
