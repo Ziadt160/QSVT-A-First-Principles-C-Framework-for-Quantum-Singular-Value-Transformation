@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/qsvt_app.dir/__/main.cpp.o -o qsvt_app  -Wl,-rpath,/usr/local/cuda-12.5/targets/x86_64-linux/lib: libqsvt_lib.a /usr/local/lib/qrack/libqrack.a /usr/local/cuda-12.5/targets/x86_64-linux/lib/libcudart.so 

@@ -1,2 +1,0 @@
-/usr/bin/ar qc libqsvt_lib.a CMakeFiles/qsvt_lib.dir/BlockEncoding.cpp.o CMakeFiles/qsvt_lib.dir/KAKDecomposition.cpp.o CMakeFiles/qsvt_lib.dir/Lcu.cpp.o CMakeFiles/qsvt_lib.dir/Qsp.cpp.o CMakeFiles/qsvt_lib.dir/Qsvt.cpp.o
-/usr/bin/ranlib libqsvt_lib.a

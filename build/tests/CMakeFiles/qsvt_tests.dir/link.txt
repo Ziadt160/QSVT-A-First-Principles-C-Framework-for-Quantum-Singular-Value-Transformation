@@ -1,1 +1,0 @@
-/usr/bin/c++ CMakeFiles/qsvt_tests.dir/test_qsvt.cpp.o -o qsvt_tests  -Wl,-rpath,/usr/local/cuda-12.5/targets/x86_64-linux/lib ../src/libqsvt_lib.a ../lib/libgtest_main.a /usr/local/lib/qrack/libqrack.a /usr/local/cuda-12.5/targets/x86_64-linux/lib/libcudart.so ../lib/libgtest.a 
