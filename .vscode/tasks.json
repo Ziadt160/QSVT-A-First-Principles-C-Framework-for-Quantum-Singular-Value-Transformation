@@ -1,0 +1,42 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build QSVT Project",
+            "type": "shell",
+            "command": "g++",
+            "args": [
+                "-g",
+                "-std=c++17",
+                // Your C++ source files
+                "${workspaceFolder}/main.cpp",
+                // "${workspaceFolder}/qsvt.cpp",
+                "${workspaceFolder}/BlockEncoding/BlockEncoding.cpp",
+                "${workspaceFolder}/Qsp/Qsp.cpp",
+                // "${workspaceFolder}/KAKDecomposition/KAKDecomposition.cpp",
+                // "${workspaceFolder}/Lcu/Lcu.cpp",
+                // Include paths
+                "-I/usr/local/include",
+                "-I/usr/local/cuda/include",
+                // Output executable name
+                "-o",
+                "${workspaceFolder}/main",
+                // Library paths
+                "-L/usr/local/lib/qrack",
+                "-L/usr/local/cuda/lib64",
+                // Libraries to link
+                "-lqrack",
+                "-lcudart",
+                "-pthread"
+            ],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": [
+                "$gcc"
+            ],
+            "detail": "Compiler: g++"
+        }
+    ]
+}
