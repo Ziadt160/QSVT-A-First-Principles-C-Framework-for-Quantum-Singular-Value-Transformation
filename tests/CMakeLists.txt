@@ -17,8 +17,10 @@ add_executable(qsvt_tests ${TEST_SOURCES})
 target_link_libraries(qsvt_tests PRIVATE 
     qsvt_lib 
     GTest::gtest_main
-    Qrack::Qrack
 )
+if(TARGET Qrack::Qrack)
+    target_link_libraries(qsvt_tests PRIVATE Qrack::Qrack)
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(qsvt_tests)
