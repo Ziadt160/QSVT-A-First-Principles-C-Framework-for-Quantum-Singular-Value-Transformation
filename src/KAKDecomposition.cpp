@@ -28,59 +28,55 @@ std::tuple<Matrix4cd, Matrix4cd, Matrix4cd> KAKDecomposition::solve()
 
     M = U_magic.transpose().eval() * U_magic;
 
-    SelfAdjointEigenSolver<Matrix4cd> eigen_solver(M);
+    Matrix4d M_R = M.real();
+    Matrix4d M_I = M.imag();
+    Matrix4d H_real = M_R + 1.23456789 * M_I;
+    SelfAdjointEigenSolver<Matrix4d> eigen_solver(H_real);
 
     if(eigen_solver.info() != Success)
     {
         std::runtime_error("Eigendecomposition failed!");
     }
 
-    Vector4cd eigenvalues = eigen_solver.eigenvalues();
+    Matrix4d O2_real = eigen_solver.eigenvectors();
 
-    // Vector4cd sqrt_eigenvalues = eigenvalues.cwiseSqrt();
-
-    Matrix4cd Am_real = eigenvalues.asDiagonal();
-
-    Matrix4cd P = eigen_solver.eigenvectors();
-
-    if (Am_real.determinant().real() < 0.00) {
-        Am_real(0, 0) *= -1.0;
+    if (O2_real.determinant() < 0.0) {
+        O2_real.col(0) *= -1.0;
     }
 
-    Matrix4cd O2_real = P;
+    Matrix4cd D = O2_real.transpose().cast<std::complex<double>>() * M * O2_real.cast<std::complex<double>>();
 
-    Matrix4cd O1_real = U_magic * O2_real.transpose().eval() * Am_real.cwiseInverse();
+    Vector4cd D_diag = D.diagonal();
+    Vector4cd sqrt_D = D_diag.cwiseSqrt();
+    Matrix4cd A_m = sqrt_D.asDiagonal();
 
-    Matrix4cd O1_complex = O1_real.cast<std::complex<double>>();
+    Matrix4cd O1_complex = U_magic * O2_real.cast<std::complex<double>>() * A_m.inverse();
+    Matrix4d O1_real = O1_complex.real();
 
-    Matrix4cd Am_complex = Am_real.cast<std::complex<double>>();
+    if (O1_real.determinant() < 0.0) {
+        O1_real.col(0) *= -1.0;
+        A_m(0, 0) *= -1.0;
+    }
 
-    Matrix4cd O2_complex = O2_real.cast<std::complex<double>>();
-
-    Matrix4cd K1 = Q * O1_complex * Q_dagger;
+    Matrix4cd K1 = Q * O1_real.cast<std::complex<double>>() * Q_dagger;
     
-    Matrix4cd A  = Q * Am_complex * Q_dagger;
+    Matrix4cd A  = Q * A_m * Q_dagger;
     
-    Matrix4cd K2 = Q * O2_complex * Q_dagger;
+    Matrix4cd K2 = Q * O2_real.transpose().cast<std::complex<double>>() * Q_dagger;
 
-    return std::make_tuple(K1, A , K2);
+    // To get the angles, we can inspect A_m which contains the diagonal eigenvalues of the magic basis.
+    // The entries are exp(i * theta_j). We extract angles.
+    Vector4cd am_diag = A_m.diagonal();
+    double t1 = std::arg(am_diag(0));
+    double t2 = std::arg(am_diag(1));
+    double t3 = std::arg(am_diag(2));
+    double t4 = std::arg(am_diag(3));
 
-    // std::vector<double> thetas;
+    angles.ax = (t1 - t2 - t3 + t4) / 4.0;
+    angles.ay = (t1 - t2 + t3 - t4) / 4.0;
+    angles.az = (t1 + t2 - t3 - t4) / 4.0;
 
-    // for(auto const &singular_value : singular_values)
-    // {
-    //     thetas.push_back( std::arg(singular_value));
-    // }
-
-
-    // double t1 = thetas[0];
-    // double t2 = thetas[1];
-    // double t3 = thetas[2];
-    // double t4 = thetas[3];
-
-    // angles.ax = (t1 - t2 - t3 + t4) / 4.0;
-    // angles.ay = (t1 - t2 + t3 - t4) / 4.0;
-    // angles.az = (t1 + t2 - t3 - t4) / 4.0;
+    return std::make_tuple(K1, A, K2);
 }
 
 AlphaCoefficients KAKDecomposition::getAMatrixAngles() const
