@@ -1,9 +1,47 @@
 # QSVT — A First-Principles C++ Framework for Quantum Singular Value Transformation
 
+![tests](https://img.shields.io/badge/tests-29%20passing-brightgreen)
+![license](https://img.shields.io/badge/license-MIT-blue)
+![lang](https://img.shields.io/badge/C%2B%2B-17-00599C)
+
+A from-scratch, **verified** C++ implementation of Quantum Singular Value
+Transformation: it compiles a matrix function `f(A)` into a runnable quantum
+circuit — block-encoding → QSP angle finding → native-gate synthesis → OpenQASM
+and resource estimates — entirely in compiled C++ (Qrack GPU-simulator backend),
+with optional Python bindings. Every component is checked against dense linear
+algebra *and* the Qrack simulator.
+
+Results at a glance
+-------------------
+
+- **Decomposition** (random unitary → native gates), verified vs Qiskit's QSD on
+  identical inputs: reproduces the unitary to ~1e-13; **4 / 28 / 136 / 592 CNOTs**
+  for n = 2..5 (~1.4x Qiskit's optimal QSD), and faster per-call once optimised.
+- **QSP angle solver**: machine precision to **degree 100+** and near `|f| = 1`
+  (homotopy continuation + analytic Jacobian) — degree 101 to ~1e-14 in ~1.7 s.
+- **QSVT applications**, validated against exact linear algebra:
+  - matrix inversion of a kappa~3 Hermitian to ~2% on its spectrum (degree-25 circuit),
+  - Hamiltonian simulation `e^{-iHt}` to ~1e-13 (machine precision),
+  - eigenvalue thresholding / spectral projection to ~5e-3.
+- **Interop**: OpenQASM 2.0 export, CNOT/depth resource estimates, `qsvt_native`
+  Python module (NumPy in/out).
+- **29 GoogleTest cases** (dense + Qrack-simulator), benchmark harness vs
+  Qiskit/PennyLane (`bench/`), CI building Qrack + the project + tests.
+
+```bash
+cmake -S . -B build && cmake --build build -j      # builds (Release by default)
+ctest --test-dir build                              # 29 tests
+./build/src/qsvt_app                                # demo (KAK, QSD, QSVT, inversion, e^{-iHt})
+```
+
+See `examples/qsvt_demo.py` for the Python API and [BENCHMARK.md](BENCHMARK.md)
+for the full comparison.
+
 Short project summary
 ---------------------
 
-This repository is a work-in-progress C++ framework that explores and implements the pieces required to build Quantum Singular Value Transformation (QSVT) from the ground up. The code uses Qrack as the quantum simulator backend (Qrack can use CUDA to accelerate simulation). The goal is to implement the low-level building blocks (block-encoding, LCU, gate decompositions, QSP) and then integrate them into a full QSVT pipeline.
+This repository implements Quantum Singular Value Transformation (QSVT) in C++
+from the ground up. The code uses Qrack as the quantum simulator backend (Qrack can use CUDA to accelerate simulation). It implements the low-level building blocks (block-encoding, LCU, gate decompositions, QSP) and integrates them into a full QSVT pipeline with worked applications.
 
 High-level roadmap (what this project is trying to do)
 ----------------------------------------------------
