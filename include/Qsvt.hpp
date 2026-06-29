@@ -1,34 +1,28 @@
 #pragma once
+// Top-level QSVT engine: owns the simulator and the ancilla bookkeeping that the
+// block-encoding / QSP pipeline is built on.
 
-#include "qrack/qfactory.hpp"
-
-#include <vector>
 #include <stdexcept>
-#include <functional>
 
+#include <qrack/qfactory.hpp>
 
-class QSVT 
-{
-public: 
-    /**
-     * @brief Constructor for QSVT Class
-     * @param num_system_qubits The number of the qubits for the main system
-     */
-    QSVT(int num_system_qubits);
+namespace qsvt {
 
-    /**
-     * @brief Destructor. Cleans up the simulator to prevent memory leaks.
-     */
-    ~QSVT();
+class QSVT {
+public:
+    /// @param num_system_qubits Number of qubits for the main system (an extra
+    ///        ancilla qubit is allocated on top for the block-encoding).
+    explicit QSVT(int num_system_qubits);
 
-    /**
-     * @brief Provides direct access to the simulator for state preparation or measurement.
-     * @return A pointer to the underlying Qrack::QInterface instance.
-    */
-    Qrack::QInterfacePtr get_simulator();
+    /// Direct access to the simulator for state preparation or measurement.
+    Qrack::QInterfacePtr get_simulator() const { return sim_; }
+
+    /// Index of the ancilla qubit used by the block-encoding.
+    int ancilla_index() const { return ancilla_qubit_index_; }
 
 private:
-    Qrack::QInterfacePtr sim;
-    int ancilla_qubit_index;
-
+    Qrack::QInterfacePtr sim_;
+    int ancilla_qubit_index_;
 };
+
+} // namespace qsvt

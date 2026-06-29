@@ -13,12 +13,19 @@ FetchContent_MakeAvailable(googletest)
 file(GLOB TEST_SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 add_executable(qsvt_tests ${TEST_SOURCES})
 
-# We can link to GTest::gtest_main because FetchContent created it
-target_link_libraries(qsvt_tests PRIVATE 
-    qsvt_lib 
+# We can link to GTest::gtest_main because FetchContent created it.
+# qsvt_lib already carries the Qrack include/link interface (target or raw
+# QRACK_* vars), so we only add the imported target here when it exists.
+target_link_libraries(qsvt_tests PRIVATE
+    qsvt_lib
     GTest::gtest_main
-    Qrack::Qrack
 )
+
+if(TARGET Qrack::Qrack)
+    target_link_libraries(qsvt_tests PRIVATE Qrack::Qrack)
+elseif(QRACK_LIBRARIES)
+    target_link_libraries(qsvt_tests PRIVATE ${QRACK_LIBRARIES})
+endif()
 
 include(GoogleTest)
 gtest_discover_tests(qsvt_tests)

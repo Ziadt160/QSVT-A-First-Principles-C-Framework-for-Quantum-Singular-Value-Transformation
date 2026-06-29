@@ -1,89 +1,121 @@
 #include "KAKDecomposition.hpp"
-#include <eigen3/Eigen/Eigen>
 
+#include <cmath>
+#include <complex>
 
-KAKDecomposition::KAKDecomposition(const Matrix4cd& matrix)
+#include <eigen3/Eigen/Eigenvalues>
+
+namespace qsvt {
+
+using cd = std::complex<double>;
+
+KAKDecomposition::KAKDecomposition(const Eigen::Matrix4cd& matrix)
+    : matrix_(matrix)
 {
-    this->matrix = matrix;
     const double inv_sqrt_2 = 1.0 / std::sqrt(2.0);
-    const std::complex<double> i(0.0, 1.0);
+    const cd i(0.0, 1.0);
 
-    this->Q << 1, 0, 0,  i,
-         0, i, 1,  0,
-         0, i, -1, 0,
-         1, 0, 0, -i;
+    // Magic basis: columns are the (phase-adjusted) Bell states. Conjugating by
+    // Q maps SU(2) (x) SU(2) onto the real orthogonal group SO(4).
+    Q_ << 1, 0, 0,  i,
+          0, i, 1,  0,
+          0, i, -1, 0,
+          1, 0, 0, -i;
+    Q_ *= inv_sqrt_2;
 
-    this->Q *= inv_sqrt_2;
-
-    this->Q_dagger = this->Q.adjoint();
+    Q_dagger_ = Q_.adjoint();
 }
 
-std::tuple<Matrix4cd, Matrix4cd, Matrix4cd> KAKDecomposition::solve()
+std::tuple<Eigen::Matrix4cd, Eigen::Matrix4cd, Eigen::Matrix4cd>
+KAKDecomposition::solve()
 {
-    Matrix4cd U_magic;
+    using Eigen::Matrix4cd;
+    using Eigen::Matrix4d;
+    using Eigen::Vector4cd;
 
-    U_magic = (Q.adjoint().eval() * matrix * Q);
+    // 1. Move into the magic basis.
+    const Matrix4cd Um = Q_dagger_ * matrix_ * Q_;
 
-    Matrix4cd M;
+    // 2. M = Um^T Um is complex-SYMMETRIC (not Hermitian). Its real and
+    //    imaginary parts are real-symmetric and commute, so a single real
+    //    orthogonal O diagonalizes both. We diagonalize Mr first, then within
+    //    each degenerate eigenspace diagonalize the restriction of Mi. This
+    //    handles repeated canonical angles, where a single generic combination
+    //    of Mr and Mi would leave M non-diagonal (and the local factors wrong).
+    const Matrix4cd M = Um.transpose() * Um;
+    const Matrix4d Mr = M.real();
+    const Matrix4d Mi = M.imag();
 
-    M = U_magic.transpose().eval() * U_magic;
+    Eigen::SelfAdjointEigenSolver<Matrix4d> solver(Mr);
+    if (solver.info() != Eigen::Success) {
+        throw KAKException("eigendecomposition failed");
+    }
+    const Eigen::Vector4d ev = solver.eigenvalues();   // ascending
+    const Matrix4d V = solver.eigenvectors();
 
-    SelfAdjointEigenSolver<Matrix4cd> eigen_solver(M);
-
-    if(eigen_solver.info() != Success)
-    {
-        std::runtime_error("Eigendecomposition failed!");
+    constexpr double kDegenerate = 1e-7;
+    Matrix4d O;
+    int i = 0;
+    while (i < 4) {
+        int j = i + 1;
+        while (j < 4 && std::abs(ev(j) - ev(i)) < kDegenerate) {
+            ++j;
+        }
+        const int g = j - i; // size of the degenerate block
+        if (g == 1) {
+            O.col(i) = V.col(i);
+        } else {
+            const Eigen::MatrixXd block = V.middleCols(i, g);     // 4 x g
+            const Eigen::MatrixXd MiSub = block.transpose() * Mi * block;
+            Eigen::SelfAdjointEigenSolver<Eigen::MatrixXd> sub(MiSub);
+            if (sub.info() != Eigen::Success) {
+                throw KAKException("eigendecomposition failed");
+            }
+            O.middleCols(i, g) = block * sub.eigenvectors();
+        }
+        i = j;
     }
 
-    Vector4cd eigenvalues = eigen_solver.eigenvalues();
+    // Force det(O) = +1 so O lives in SO(4) (a reflection would break locality).
+    if (O.determinant() < 0.0) {
+        O.col(0) *= -1.0;
+    }
+    const Matrix4cd Oc = O.cast<cd>();
 
-    // Vector4cd sqrt_eigenvalues = eigenvalues.cwiseSqrt();
-
-    Matrix4cd Am_real = eigenvalues.asDiagonal();
-
-    Matrix4cd P = eigen_solver.eigenvectors();
-
-    if (Am_real.determinant().real() < 0.00) {
-        Am_real(0, 0) *= -1.0;
+    // 3. Diagonal phases of M in this basis; A's diagonal is their square root.
+    const Vector4cd diag = (Oc.transpose() * M * Oc).diagonal();
+    Vector4cd a;
+    for (int k = 0; k < 4; ++k) {
+        a(k) = std::sqrt(diag(k)); // principal branch; |a(k)| = 1
     }
 
-    Matrix4cd O2_real = P;
+    const Matrix4cd K2m = Oc.transpose();                       // SO(4), det = +1
+    Matrix4cd K1m = Um * Oc * a.cwiseInverse().asDiagonal();     // = Um O Am^{-1}
 
-    Matrix4cd O1_real = U_magic * O2_real.transpose().eval() * Am_real.cwiseInverse();
+    // K1m is real orthogonal, but only the det = +1 (SO(4)) component maps to a
+    // local gate; a det = -1 reflection does not. Flipping one sqrt branch flips
+    // det(K1m) while leaving a_k^2 (and hence the reconstruction) unchanged.
+    if (K1m.determinant().real() < 0.0) {
+        a(0) = -a(0);
+        K1m = Um * Oc * a.cwiseInverse().asDiagonal();
+    }
+    const Matrix4cd Am = a.asDiagonal();
 
-    Matrix4cd O1_complex = O1_real.cast<std::complex<double>>();
+    // 4. Back to the computational basis.
+    const Matrix4cd K1 = Q_ * K1m * Q_dagger_;
+    const Matrix4cd A  = Q_ * Am  * Q_dagger_;
+    const Matrix4cd K2 = Q_ * K2m * Q_dagger_;
 
-    Matrix4cd Am_complex = Am_real.cast<std::complex<double>>();
+    // 5. Interaction angles from the magic-basis phases (ordering-dependent).
+    const double t0 = std::arg(a(0));
+    const double t1 = std::arg(a(1));
+    const double t2 = std::arg(a(2));
+    const double t3 = std::arg(a(3));
+    angles_.ax = (t0 - t1 - t2 + t3) / 4.0;
+    angles_.ay = (t0 - t1 + t2 - t3) / 4.0;
+    angles_.az = (t0 + t1 - t2 - t3) / 4.0;
 
-    Matrix4cd O2_complex = O2_real.cast<std::complex<double>>();
-
-    Matrix4cd K1 = Q * O1_complex * Q_dagger;
-    
-    Matrix4cd A  = Q * Am_complex * Q_dagger;
-    
-    Matrix4cd K2 = Q * O2_complex * Q_dagger;
-
-    return std::make_tuple(K1, A , K2);
-
-    // std::vector<double> thetas;
-
-    // for(auto const &singular_value : singular_values)
-    // {
-    //     thetas.push_back( std::arg(singular_value));
-    // }
-
-
-    // double t1 = thetas[0];
-    // double t2 = thetas[1];
-    // double t3 = thetas[2];
-    // double t4 = thetas[3];
-
-    // angles.ax = (t1 - t2 - t3 + t4) / 4.0;
-    // angles.ay = (t1 - t2 + t3 - t4) / 4.0;
-    // angles.az = (t1 + t2 - t3 - t4) / 4.0;
+    return std::make_tuple(K1, A, K2);
 }
 
-AlphaCoefficients KAKDecomposition::getAMatrixAngles() const
-{
-    return angles;
-}
+} // namespace qsvt

@@ -1,22 +1,28 @@
 #pragma once
+// Quantum Signal Processing (QSP) on a single qubit: interleave a fixed signal
+// unitary Ua with Z-rotations parameterized by a sequence of phase angles.
 
-#include <qrack/qfactory.hpp>
-#include <eigen3/Eigen/Eigen>
+#include <vector>
 
-using namespace Qrack;
+#include "Common.hpp"
+#include "QrackTypes.hpp"
 
-typedef Eigen::Matrix<Qrack::complex, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor> DynamicMatrix;
+namespace qsvt {
 
-
-class Qsp
-{
-private:
-    std::vector<double> angles;
-    DynamicMatrix Ua;
-    QInterfacePtr qReg;
-
+class Qsp {
 public:
+    /// @param qReg   Simulator interface.
+    /// @param Ua     The 2x2 signal unitary, in Qrack layout.
+    /// @param angles QSP phase angles (length determines the polynomial degree).
+    Qsp(Qrack::QInterfacePtr qReg, QMatrix Ua, std::vector<double> angles);
 
-    explicit Qsp(QInterfacePtr qReg, DynamicMatrix Ua, std::vector<double> angles);
+    /// Apply the QSP sequence to qubit 0.
     void apply();
+
+private:
+    std::vector<double> angles_;
+    QMatrix Ua_;
+    Qrack::QInterfacePtr qReg_;
 };
+
+} // namespace qsvt

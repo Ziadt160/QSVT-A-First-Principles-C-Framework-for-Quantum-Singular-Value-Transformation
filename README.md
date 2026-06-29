@@ -22,26 +22,120 @@ There are two ways to make progress on block-encodings and QSVT: (1) use the sta
 Current status (what's implemented)
 -----------------------------------
 
-- BlockEncoding: basic scalar block-encoding implemented; matrix constructor starts checks but the large-unitary construction is incomplete (see known issues).
-- Lcu: generation of Pauli string basis and coefficients implemented for representing matrices as linear combinations of Pauli operators.
-- Qsp: a one-qubit QSP routine and a small driver that applies a sequence of rotations / unitaries using a given angle set.
-- KAKDecomposition and CS/CSD: work is in progress — KAK decomposition implementation exists for 2-qubit unitaries (SU(4)) and returns K1, A, K2 factors.
-- QSVT: a thin wrapper around the Qrack interface that will orchestrate the full pipeline (simulator creation, ancilla bookkeeping).
+All components live in the `qsvt` namespace. Shared types are centralised in
+`include/Common.hpp` (double-precision Eigen aliases) and `include/QrackTypes.hpp`
+(the Qrack-facing matrix type and a converter). A GoogleTest suite in `tests/`
+covers round-trip correctness of every decomposition.
+
+- BlockEncoding: scalar block-encoding (the reflection `[[a, q], [q, -a]]`) and
+  matrix block-encoding via the standard dilation
+  `U = [[A, sqrt(I - A A^H)], [sqrt(I - A^H A), -A^H]]`. The constructor stores
+  the simulator handle and the resulting unitary. `apply(target)` runs the
+  single-qubit case directly; `apply(qubits)` compiles a multi-qubit encoding to
+  native gates (Quantum Shannon Decomposition) and runs them on the simulator.
+- Lcu: generation of the Pauli-string basis and the coefficients
+  `coef_j = (1/2^n) tr(P_j A)`, plus a `reconstruct()` helper that rebuilds the
+  matrix from its Pauli decomposition.
+- Qsp: a one-qubit QSP routine that interleaves a signal unitary with
+  Z-rotations driven by a given angle set.
+- QspAngleSolver: the QSP angle-finding routine. Given a real target polynomial
+  f(x) (degree d, parity d mod 2, |f| <= 1), it finds a symmetric phase sequence
+  with Re<0|U(x)|0> = f(x), using a damped Gauss-Newton (Levenberg-Marquardt)
+  fit over Chebyshev nodes in the Wx convention, with an **exact analytic
+  Jacobian** (prefix/suffix products of the QSP factors, O(d) per node) and a
+  **homotopy continuation**: the target is morphed from T_d (which Phi = 0 solves
+  exactly) to f, warm-starting each step. This reaches **degree 100+ near machine
+  precision** (e.g. degree 101 to ~1e-14 in ~1.7 s; sub-200 ms through degree
+  ~50) and handles targets near |f| = 1 -- where a cold-start solve stalls around
+  degree 9. The resulting phases drive the `Qsp` class and the QSVT pipeline;
+  verified against the forward model and on the Qrack simulator.
+- KAKDecomposition: KAK (Cartan) decomposition for 2-qubit unitaries (SU(4)),
+  returning local factors `K1`, `K2` and the canonical entangler `A`. The
+  complex-symmetric (and unitary) matrix in the magic basis is diagonalised by
+  simultaneous diagonalisation of its commuting real and imaginary parts
+  (degenerate eigenspaces handled), with a parity correction that keeps `K1`,
+  `K2` in `SO(4)` so they map to genuinely local gates. `K1 A K2` reproduces the
+  input to machine precision.
+- CSDecomposition: cosine-sine decomposition for any even-dimensional unitary
+  (equal `n x n` bipartition), returning `L1, L2, R1, R2` and the rotation
+  angles. This generalises beyond the 4x4-only KAK to arbitrary matrix sizes.
+- TwoQubitSynthesis: compiles a 2-qubit unitary into a native gate sequence
+  (single-qubit gates + CNOTs) via KAK — the local factors are split into
+  single-qubit gates (Van Loan-Pitsianis) and the entangler is realised with
+  `exp(i t ZZ) = CNOT (I (x) Rz(-2t)) CNOT` conjugated into XX/YY. Verified both
+  against a dense reference model and by running on the Qrack simulator.
+- ShannonDecomposition: compiles an arbitrary n-qubit unitary into native gates.
+  It recurses the cosine-sine decomposition (split on the top qubit) into
+  uniformly-controlled Ry/Rz rotations plus two demultiplexed (n-1)-qubit
+  factors, bottoming out at a 2-qubit base case. The uniformly-controlled
+  rotations use the Mottonen flat construction (2^k CNOTs), the 2-qubit base is
+  a 4-CNOT synthesis (the XX/ZZ canonical rotations share a CNOT pair), and a
+  unitary-preserving peephole pass cleans up (adjacent-CNOT cancellation +
+  single-qubit fusion). This gives ~0.58*4^n CNOTs (4/28/136/592 for n=2..5) vs
+  ~0.9*4^n naive. Verified dense and on the Qrack simulator up to 4-5 qubits;
+  this is what `BlockEncoding::apply(qubits)` uses. (~1.4x above Qiskit's
+  fully-optimised QSD — see next steps.)
+- QSVT (engine): a wrapper around the Qrack interface that creates the simulator
+  (system qubits plus one ancilla) and tracks the ancilla index.
+- QsvtPipeline: the full Quantum Singular Value Transformation. For a Hermitian
+  contraction `A` and QSP phases `Phi`, it builds the rotation-convention
+  block-encoding `U_W = [[A, i sqrt(I-A^2)], [i sqrt(I-A^2), A]]` and the QSVT
+  operator `U_Phi = E(phi_0) prod_k [U_W E(phi_k)]` (with `E(phi)=e^{i phi Z_anc}`),
+  whose top-left block equals `P(A)` — verified to machine precision against the
+  polynomial applied to A's eigenvalues. `qsvtCircuit` emits the whole thing as a
+  native gate sequence (U_W compiled via ShannonDecomposition; projector
+  rotations are ancilla Z-rotations), and `compileMatrixFunction(A, f, degree)`
+  is the **matrix-function compiler**: target function -> QSP phases -> runnable
+  QSVT circuit + resource profile. A worked matrix-inversion example lives in
+  `main.cpp`.
+- Resource estimation and QASM export (`countResources`, `toQasm` in
+  `Gate.hpp` / `Circuit.cpp`): CNOT/single-qubit/depth counts and OpenQASM 2.0
+  output (`cx` + `U(theta,phi,lambda)` via a ZYZ factorisation), so compiled
+  circuits run on other toolchains / hardware.
+- HamiltonianSimulation: a QSVT application implementing `e^{-iHt}` for a
+  Hermitian `H` via `e^{-iHt} = cos(tH) - i sin(tH)`. It fits `cos(tx)` (even)
+  and `sin(tx)` (odd) with the angle solver and applies them with QSVT; the
+  Hermitian part of each block recovers the real matrix function. On a 2-qubit
+  model at `t = 3`, degree-21 QSVT reproduces `e^{-iHt}` to ~1e-14 (machine
+  precision -- the truncation falls below it), with ~560/588-CNOT cos/sin
+  circuits. Verified against the exact evolution operator.
+- EigenvalueThreshold: spectral projection / ground-state filtering, the third
+  canonical QSVT application. Applies a smooth `sign(H - mu)` (odd `erf(x/w)`
+  target) to project onto eigenvalues above a threshold: `Pi = (I + sign(H-mu))/2`.
+  Projects a 4-qubit-block model's positive eigenspace to ~5e-3 at degree 25.
 
 Files of interest
 -----------------
 
+- `include/Common.hpp` — shared double-precision Eigen type aliases and tolerance.
+- `include/QrackTypes.hpp` — Qrack-facing matrix type and `toQMatrix` converter.
 - `include/BlockEncoding.hpp`, `src/BlockEncoding.cpp` — block-encoding class and helpers.
 - `include/Lcu.hpp`, `src/Lcu.cpp` — LCU decomposition (Pauli strings and coefficients).
 - `include/KAKDecomposition.hpp`, `src/KAKDecomposition.cpp` — KAK decomposition for two-qubit unitaries.
+- `include/CSDecomposition.hpp`, `src/CSDecomposition.cpp` — cosine-sine decomposition for even-dimensional unitaries.
+- `include/Gate.hpp`, `src/Circuit.cpp` — native gate type and dense/simulator circuit evaluation shared by the synthesizers.
+- `include/TwoQubitSynthesis.hpp`, `src/TwoQubitSynthesis.cpp` — compile a 2-qubit unitary to native gates (KAK -> single-qubit gates + CNOTs).
+- `include/ShannonDecomposition.hpp`, `src/ShannonDecomposition.cpp` — compile an arbitrary n-qubit unitary to native gates (recursive CSD).
 - `include/Qsp.hpp`, `src/Qsp.cpp` — QSP helper for small systems.
-- `include/Qsvt.hpp`, `src/Qsvt.cpp` — top-level QSVT wrapper.
-- `tests/test_qsvt.cpp` — test harness and small examples.
+- `include/QspAngleSolver.hpp`, `src/QspAngleSolver.cpp` — QSP angle finding (phase factors for a target polynomial).
+- `include/Gate.hpp`, `src/Circuit.cpp` — also: `countResources` (gate/depth) and `toQasm` (OpenQASM 2.0 export).
+- `include/Qsvt.hpp`, `src/Qsvt.cpp` — simulator-owning QSVT engine wrapper.
+- `include/QsvtPipeline.hpp`, `src/QsvtPipeline.cpp` — full QSVT (block-encode -> QSVT operator -> circuit) and the `compileMatrixFunction` matrix-function compiler.
+- `include/HamiltonianSimulation.hpp`, `src/HamiltonianSimulation.cpp` — `e^{-iHt}` via QSVT (cos(tH) and sin(tH) circuits).
+- `include/EigenvalueThreshold.hpp`, `src/EigenvalueThreshold.cpp` — spectral projector / eigenvalue thresholding via QSVT sign(H-mu).
+- `tests/test_qsvt.cpp` — GoogleTest suite (decompositions, QSVT block == P(A), QSVT circuit on Qrack, QASM round-trip, resources, block-encoding, LCU).
+- `bench/` — benchmark harness comparing this framework against Qiskit and PennyLane; see [BENCHMARK.md](BENCHMARK.md).
+- `bindings/` — optional pybind11 Python bindings (`qsvt_native`): NumPy in/out, exposes the angle solver, decompositions (+ QASM/resources), QSVT pipeline, and applications. See [bindings/README.md](bindings/README.md). Build with `-DBUILD_PYTHON=ON`.
 
 Known problems and design decisions
 ----------------------------------
 
 - Block encoding for n-qubit gates (n >= 2):
+  - Status: resolved. The `BlockEncoding` matrix constructor builds and stores a
+    valid block-encoding *unitary* (the dilation embedding the operator as the
+    top-left block), and `apply(qubits)` compiles it into native gates via the
+    Quantum Shannon Decomposition and runs it on hardware-like circuits. What
+    remains is gate-count optimisation (next steps).
   - I attempted to implement block encoding for an arbitrary n-qubit operator that acts as the top-left block of a larger unitary. When doing that for multi-qubit matrices I found there was no simple, already-implemented routine in the codebase to directly produce the hardware-style decomposition for n >= 2.
   - Two routes were considered:
     1. Use the statevector / large-unitary approach: build a big unitary matrix (embedding your target as a block) and feed it to the simulator as a single matrix operation. This works in simulation but doesn't reflect how the unitary would be implemented on hardware.
@@ -76,11 +170,29 @@ Where QSP is useful (examples)
 Planned next steps (concrete)
 -----------------------------
 
-1. Finish robustly implementing KAK and CS/CSD decompositions and add test cases. These are necessary to realize hardware-style block encodings for multi-qubit operators.
-2. Finish the BlockEncoding class to support n-qubit matrices with a hardware-like decomposition (not just the statevector embedding).
-3. Implement full LCU operator application and controlled-selection primitives needed for LCU-based implementations.
-4. Implement the QSP angle-finding routine (numerical solver for QSP phases) and add utilities to synthesize QSP circuits for multi-qubit block-encodings.
-5. Integrate the pieces to implement QSVT and test on canonical examples (matrix inversion, Hamiltonian simulation, singular value thresholding).
+DONE: the full QSVT pipeline is implemented (`QsvtPipeline`) and the pieces are
+integrated into a matrix-function compiler with a matrix-inversion example.
+`block(U_Phi) == P(A)` is verified to machine precision and the circuit runs on
+the Qrack simulator.
+
+1. `QspAngleSolver` — largely addressed via homotopy continuation (now solves to
+   machine precision at degree 25+ and near `|f| = 1`; a degree-25 regularized
+   inverse drives the matrix-inversion demo to ~2% on the spectrum). For very
+   high degree / arbitrary precision, the next step is the
+   complementary-polynomial completion + root-finding / Fejer-Riesz method (as
+   in pyqsp), which is non-iterative and machine-precision by construction.
+2. Further reduce CNOT count toward the optimal ~0.48*4^n. Done so far: Mottonen
+   uniformly-controlled rotations (2^k CNOTs) + 4-CNOT 2-qubit base + peephole
+   (~0.58*4^n, 1.4x above optimal). Remaining: the optimal 3-CNOT 2-qubit base
+   (Vatan-Williams Weyl-template fit; ~1.25x) and the Shende-Bullock-Markov
+   cross-level merges.
+3. More QSVT applications on top of the compiler. Done: matrix inversion,
+   Hamiltonian simulation (`e^{-iHt}`), and eigenvalue thresholding / spectral
+   projection (`EigenvalueThreshold`). Next: amplitude amplification, and
+   combining multi-part circuits (e.g. cos/sin of Hamiltonian sim) into a single
+   circuit via LCU (one extra ancilla).
+4. Implement full LCU operator application and controlled-selection primitives
+   (PREPARE/SELECT). General (non-Hermitian) singular-value QSVT (two projectors).
 
 Build and run instructions
 --------------------------

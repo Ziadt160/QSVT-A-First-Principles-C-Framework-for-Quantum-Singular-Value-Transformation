@@ -1,91 +1,81 @@
 #include "Lcu.hpp"
+
+#include <cmath>
+
 #include <eigen3/unsupported/Eigen/KroneckerProduct>
 
-const std::complex<double> i(0.0, 1.0);
+namespace qsvt {
 
+namespace {
+const Complex kI(0.0, 1.0);
+}
 
-Lcu::Lcu(const MatrixXcd& A)
+Lcu::Lcu(const Matrix& A)
+    : A_(A)
 {
-    this->A = A;
-
-    Matrix2cd I;
+    Eigen::Matrix2cd I, X, Y, Z;
     I << 1, 0,
-        0, 1;
-
-    Matrix2cd X;
+         0, 1;
     X << 0, 1,
-        1, 0;
-    Matrix2cd Y;
-    Y << 0, -i,
-        i,  0;
+         1, 0;
+    Y << 0, -kI,
+         kI, 0;
+    Z << 1, 0,
+         0, -1;
 
-    Matrix2cd Z;
-    Z << 1,  0,
-        0, -1;
+    pauli_matrices_ = {I, X, Y, Z};
 
-
-    pauli_matricies.push_back(I);
-    pauli_matricies.push_back(X);
-    pauli_matricies.push_back(Y);
-    pauli_matricies.push_back(Z);
-
-
-    int shape = A.cols();
-
-    n_qubits = static_cast<int>(std::round(std::log2(shape)));
-
-    n_pauli_strings = std::pow(4 , n_qubits);
+    const Eigen::Index shape = A_.cols();
+    n_qubits_ = static_cast<int>(std::lround(std::log2(static_cast<double>(shape))));
+    n_pauli_strings_ = static_cast<int>(std::lround(std::pow(4.0, n_qubits_)));
 }
 
 void Lcu::generate_pauli_strings()
 {
-    for (int i = 0; i < n_pauli_strings; i += 1)
-    {
-        int temp_index = i;
+    pauli_strings_.clear();
+    pauli_strings_.reserve(static_cast<std::size_t>(n_pauli_strings_));
 
-        if (n_qubits == 0) {
-            MatrixXcd p(1,1); p(0,0) = 1;
-            pauli_strings.push_back(p);
+    for (int i = 0; i < n_pauli_strings_; ++i) {
+        if (n_qubits_ == 0) {
+            Matrix p(1, 1);
+            p(0, 0) = 1;
+            pauli_strings_.push_back(p);
             continue;
-        }        
-
-        MatrixXcd current = pauli_matricies[ temp_index % 4];
-
-        temp_index = temp_index / 4;
-
-        for(int j = 1; j < n_qubits; j += 1)
-        {
-            MatrixXcd next = pauli_matricies[ temp_index % 4];
-
-            current = kroneckerProduct(next, current);
-
-            temp_index = temp_index / 4;
         }
 
-        pauli_strings.push_back(current);
-    };
-};
+        int temp_index = i;
+        Matrix current = pauli_matrices_[temp_index % 4];
+        temp_index /= 4;
 
-void Lcu::generate_coefs()
-{
-    this->coefs.clear();
-    this->coefs.reserve(this->pauli_strings.size());
+        for (int j = 1; j < n_qubits_; ++j) {
+            const Matrix next = pauli_matrices_[temp_index % 4];
+            current = Eigen::kroneckerProduct(next, current).eval();
+            temp_index /= 4;
+        }
 
-    for( auto const& pauli_string : pauli_strings)
-    {
-        MatrixXcd matrix = pauli_string * A;
-        dcomplex multiplier = 1.0 / std::pow(2.0, n_qubits);
-
-        coefs.push_back(  multiplier * matrix.trace());
+        pauli_strings_.push_back(current);
     }
 }
 
-const std::vector<MatrixXcd>& Lcu::get_pauli_strings() const
+void Lcu::generate_coefs()
 {
-    return this->pauli_strings;
+    coefs_.clear();
+    coefs_.reserve(pauli_strings_.size());
+
+    const Complex multiplier = 1.0 / std::pow(2.0, n_qubits_);
+    for (const auto& pauli_string : pauli_strings_) {
+        const Matrix product = pauli_string * A_;
+        coefs_.push_back(multiplier * product.trace());
+    }
 }
 
-const std::vector<std::complex<double>>& Lcu::get_coefs() const
+Matrix Lcu::reconstruct() const
 {
-    return this->coefs;
+    Matrix result = Matrix::Zero(A_.rows(), A_.cols());
+    for (std::size_t j = 0; j < pauli_strings_.size(); ++j) {
+        result += coefs_[j] * pauli_strings_[j];
+    }
+    return result;
 }
+
+} // namespace qsvt
