@@ -164,6 +164,8 @@ Files of interest
 - `tests/test_qsvt.cpp` — GoogleTest suite (decompositions, QSVT block == P(A), QSVT circuit on Qrack, QASM round-trip, resources, block-encoding, LCU).
 - `bench/` — benchmark harness comparing this framework against Qiskit and PennyLane; see [BENCHMARK.md](BENCHMARK.md).
 - `bindings/` — optional pybind11 Python bindings (`qsvt_native`): NumPy in/out, exposes the angle solver, decompositions (+ QASM/resources), QSVT pipeline, and applications. See [bindings/README.md](bindings/README.md). Build with `-DBUILD_PYTHON=ON`.
+- `examples/` — runnable Python demo (`qsvt_demo.py`) and notebook (`qsvt_demo.ipynb`) covering the full pipeline + applications.
+- `docs/angle-solver.md` — technical note on the homotopy + analytic-Jacobian QSP angle solver.
 
 Known problems and design decisions
 ----------------------------------
