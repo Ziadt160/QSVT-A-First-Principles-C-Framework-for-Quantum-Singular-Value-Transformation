@@ -127,10 +127,13 @@ void zyzAngles(const Eigen::Matrix2cd& m, double& theta, double& phi,
         phi = std::arg(m(1, 0)) - std::arg(-m(0, 1));
         lambda = 0.0;
     } else {
-        const double sum = std::arg(m(1, 1)) - std::arg(m(0, 0));   // phi + lambda
-        const double diff = std::arg(m(1, 0)) - std::arg(-m(0, 1)); // phi - lambda
-        phi = 0.5 * (sum + diff);
-        lambda = 0.5 * (sum - diff);
+        // Extract phi and lambda DIRECTLY relative to arg(M00). Averaging
+        // phi+lambda and phi-lambda (each only defined mod 2*pi) is wrong when
+        // the two wrap inconsistently -- it shifts phi/lambda by pi and flips
+        // the off-diagonal signs. Only e^{i phi}, e^{i lambda} matter, so any
+        // representative of each angle is fine.
+        phi = std::arg(m(1, 0)) - std::arg(m(0, 0));
+        lambda = std::arg(-m(0, 1)) - std::arg(m(0, 0));
     }
 }
 
