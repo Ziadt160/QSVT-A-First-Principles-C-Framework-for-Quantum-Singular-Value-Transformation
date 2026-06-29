@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libeigen3-dev
+
+      # Qrack is the simulator backend and is not packaged, so build it from
+      # source (CPU-only for CI). Pin a tag for reproducibility if needed.
+      - name: Build & install Qrack (CPU-only)
+        run: |
+          git clone --depth 1 https://github.com/unitaryfoundation/qrack.git
+          cmake -S qrack -B qrack/build \
+            -DCMAKE_BUILD_TYPE=Release \
+            -DENABLE_OPENCL=OFF -DENABLE_CUDA=OFF
+          cmake --build qrack/build -j"$(nproc)"
+          sudo cmake --install qrack/build
+          sudo ldconfig
+
+      - name: Configure
+        run: cmake -S . -B build -DBUILD_TESTS=ON -DBUILD_BENCH=ON -DUSE_CUDA=OFF
+
+      - name: Build
+        run: cmake --build build -j"$(nproc)"
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Demo
+        run: ./build/src/qsvt_app

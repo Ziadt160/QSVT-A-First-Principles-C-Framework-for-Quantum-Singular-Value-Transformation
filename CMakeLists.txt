@@ -5,16 +5,30 @@ include(FetchContent) # <-- ADDED THIS LINE
 
 option(USE_CUDA "Enable CUDA-enabled Qrack interface at runtime/build" OFF)
 option(BUILD_TESTS "Build unit tests" ON)
+option(BUILD_BENCH "Build the benchmark harness" ON)
+option(BUILD_PYTHON "Build the pybind11 Python bindings" OFF)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+
+# Default to an optimized build. Eigen is header-only and relies on aggressive
+# inlining/vectorisation, so an unoptimised (-O0) build is 10-30x slower.
+if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
+    message(STATUS "No build type specified; defaulting to Release.")
+endif()
 
 # Basic warnings
 if(MSVC)
     add_compile_options(/W4 /permissive-)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
+    # Enable native vectorisation for Eigen (opt-out for non-native targets).
+    option(QSVT_NATIVE_ARCH "Build with -march=native" ON)
+    if(QSVT_NATIVE_ARCH)
+        add_compile_options(-march=native)
+    endif()
 endif()
 
 # Dependencies
@@ -102,8 +116,20 @@ if(BUILD_TESTS)
     add_subdirectory(tests)
 endif()
 
-# Install rules (minimal)
-install(TARGETS qsvt_app qsvt_lib
+if(BUILD_BENCH)
+    add_subdirectory(bench)
+endif()
+
+if(BUILD_PYTHON)
+    add_subdirectory(bindings)
+endif()
+
+# Install rules (minimal). qsvt_app only exists when main.cpp was found.
+set(QSVT_INSTALL_TARGETS qsvt_lib)
+if(TARGET qsvt_app)
+    list(APPEND QSVT_INSTALL_TARGETS qsvt_app)
+endif()
+install(TARGETS ${QSVT_INSTALL_TARGETS}
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
