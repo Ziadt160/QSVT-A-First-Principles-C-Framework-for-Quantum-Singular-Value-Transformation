@@ -584,7 +584,7 @@ TEST(Lcu, ReconstructsMatrixFromPauliStrings) {
 // Block encoding
 // ---------------------------------------------------------------------------
 TEST(BlockEncoding, ScalarProducesUnitaryWithCorrectBlock) {
-    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 1, ZERO_BCI);
+    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_CPU, 1, ZERO_BCI);
     qsvt::BlockEncoding be(qReg, 0.6);
     ASSERT_EQ(be.dimension(), 2);
 
@@ -599,13 +599,13 @@ TEST(BlockEncoding, ScalarProducesUnitaryWithCorrectBlock) {
 }
 
 TEST(BlockEncoding, ScalarOutOfRangeThrows) {
-    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 1, ZERO_BCI);
+    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_CPU, 1, ZERO_BCI);
     EXPECT_THROW(qsvt::BlockEncoding(qReg, 1.5), qsvt::BlockEncodingException);
     EXPECT_THROW(qsvt::BlockEncoding(qReg, -1.5), qsvt::BlockEncodingException);
 }
 
 TEST(BlockEncoding, MatrixDilationIsUnitaryWithCorrectTopBlock) {
-    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 2, ZERO_BCI);
+    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_CPU, 2, ZERO_BCI);
     // A contraction: half of a (unitary) sampled matrix has norm 0.5 < 1.
     qsvt::Matrix a = 0.5 * sampleUnitary(2, 33);
     qsvt::BlockEncoding be(qReg, a);
@@ -665,14 +665,14 @@ TEST(QSVT, AllocatesAncillaQubit) {
 // Sanity: raw Qrack gates still behave (kept from the original suite)
 // ---------------------------------------------------------------------------
 TEST(QrackGates, XGateSetsProbToOne) {
-    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 2, ZERO_BCI);
+    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_CPU, 2, ZERO_BCI);
     qReg->X(0);
     // Qrack is single precision: don't demand bit-exact equality.
     EXPECT_NEAR(qReg->Prob(0), 1.0, 1e-5);
 }
 
 TEST(QrackMeasure, MeasureReturnsCorrectResult) {
-    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 2, ZERO_BCI);
+    QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_CPU, 2, ZERO_BCI);
     qReg->X(0);
     EXPECT_TRUE(qReg->M(0));
 }

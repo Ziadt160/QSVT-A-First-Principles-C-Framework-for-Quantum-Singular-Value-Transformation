@@ -24,8 +24,10 @@ if(MSVC)
     add_compile_options(/W4 /permissive-)
 else()
     add_compile_options(-Wall -Wextra -Wpedantic -Wno-unused-parameter)
-    # Enable native vectorisation for Eigen (opt-out for non-native targets).
-    option(QSVT_NATIVE_ARCH "Build with -march=native" ON)
+    # Native vectorisation is opt-in: -march=native is not portable (binaries can
+    # fault on other CPUs, and it has triggered codegen differences in CI).
+    # Release (-O3) already vectorises with the baseline ISA.
+    option(QSVT_NATIVE_ARCH "Build with -march=native (non-portable)" OFF)
     if(QSVT_NATIVE_ARCH)
         add_compile_options(-march=native)
     endif()
