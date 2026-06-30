@@ -1,6 +1,12 @@
 ## src/CMakeLists.txt - builds library and executable
 
-# collect sources; exclude main.cpp from library
+# collect sources; exclude main.cpp from library.
+#
+# This GLOB picks up every src/*.cpp -- including QspAngleSolver.cpp and the
+# Newton-method SymQspAngleSolver.cpp -- so new solver files are compiled into
+# qsvt_lib automatically. SymQspAngleSolver.cpp additionally uses Eigen's
+# header-only unsupported FFT (<unsupported/Eigen/FFT>), which resolves via the
+# Eigen3::Eigen include dirs linked below; no extra dependency is required.
 file(GLOB_RECURSE QSVT_SOURCES CONFIGURE_DEPENDS
      ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp
      ${CMAKE_CURRENT_SOURCE_DIR}/*.cxx

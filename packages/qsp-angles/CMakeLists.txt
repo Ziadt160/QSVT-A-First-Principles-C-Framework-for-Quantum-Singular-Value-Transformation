@@ -47,7 +47,7 @@ else()
   FetchContent_MakeAvailable(Eigen3)
 endif()
 
-pybind11_add_module(_core src/_core.cpp src/QspAngleSolver.cpp)
+pybind11_add_module(_core src/_core.cpp src/QspAngleSolver.cpp src/SymQspAngleSolver.cpp)
 target_include_directories(_core PRIVATE src)
 target_link_libraries(_core PRIVATE Eigen3::Eigen)
 

@@ -1,9 +1,15 @@
 """qsp-angles: a fast C++ QSP/QSVT phase-factor (angle) solver.
 
-The heavy lifting is a self-contained C++ solver (homotopy continuation + an
-exact analytic Jacobian, Levenberg-Marquardt over Chebyshev nodes) exposed to
-Python via pybind11. It computes the phase sequence ``Phi`` such that, in the
-**Wx convention**,
+The heavy lifting is a self-contained C++ solver exposed to Python via pybind11.
+Two methods are available (select via ``method=``):
+
+* ``"sym_qsp"`` (DEFAULT) -- a symmetric-QSP Newton method (Dong-Lin-Ni-Wang,
+  arXiv:2307.12468; the algorithm behind pyqsp's ``sym_qsp``). It is strictly
+  faster than the homotopy solver and reaches degree 1000+ at machine precision.
+* ``"homotopy"`` -- homotopy continuation + an exact analytic Jacobian
+  (Levenberg-Marquardt over Chebyshev nodes), kept as a fallback.
+
+Both compute the phase sequence ``Phi`` such that, in the **Wx convention**,
 
     U(x, Phi) = e^{i phi_0 Z} prod_{k>=1} [ W(x) e^{i phi_k Z} ],
     W(x) = e^{i arccos(x) X},
@@ -60,6 +66,19 @@ PolyLike = Union[Callable[[float], float], Sequence[float], np.ndarray, "np.poly
 
 # Default convergence tolerance on the worst-case grid residual.
 _DEFAULT_TOL = 1e-6
+
+# Supported angle-solver methods, mapping the public ``method`` name to its
+# ``_core`` entry point. ``"sym_qsp"`` (the symmetric-QSP Newton method,
+# Dong-Lin-Ni-Wang arXiv:2307.12468) is the DEFAULT: it is strictly faster than
+# the homotopy solver and reaches far higher degree (1000+) at machine
+# precision. ``"homotopy"`` (homotopy continuation + analytic Jacobian) is kept
+# as a fallback. Both return {phases, residual, converged} in the Wx / Re
+# convention, so they are interchangeable at the call site.
+_DEFAULT_METHOD = "sym_qsp"
+_METHODS = {
+    "sym_qsp": "sym_qsp_poly_to_angles",
+    "homotopy": "poly_to_angles",
+}
 
 
 @dataclass
@@ -188,6 +207,7 @@ def target2angles(
     degree: int,
     validate: bool = True,
     tol: float = _DEFAULT_TOL,
+    method: str = _DEFAULT_METHOD,
 ) -> AngleResult:
     """Solve for phases approximating an arbitrary real callable ``func``.
 
@@ -202,11 +222,25 @@ def target2angles(
         tol: convergence tolerance; ``AngleResult.converged`` is set to
             ``residual < tol`` (default ``1e-6``). The C++ solver always reports
             the raw worst-case residual.
+        method: angle solver to use. ``"sym_qsp"`` (DEFAULT) is the
+            symmetric-QSP Newton method -- strictly faster than the homotopy
+            solver and reaching far higher degree (1000+) at machine precision.
+            ``"homotopy"`` is the homotopy-continuation fallback. Both return
+            phases in the same Wx / Re convention.
+
+    Raises:
+        ValueError: if ``method`` is not one of ``"sym_qsp"`` / ``"homotopy"``,
+            or (when ``validate``) if the target violates ``|f| <= 1`` or parity.
     """
+    if method not in _METHODS:
+        raise ValueError(
+            f"method must be one of {sorted(_METHODS)!r}, got {method!r}"
+        )
     d = int(degree)
     if validate:
         _validate_target(func, d)
-    res = _core.poly_to_angles(lambda x: float(func(x)), d)
+    solve = getattr(_core, _METHODS[method])
+    res = solve(lambda x: float(func(x)), d)
     residual = float(res["residual"])
     return AngleResult(
         phases=np.asarray(res["phases"], dtype=float),
@@ -221,6 +255,7 @@ def poly2angles(
     basis: str = "chebyshev",
     validate: bool = True,
     tol: float = _DEFAULT_TOL,
+    method: str = _DEFAULT_METHOD,
 ) -> AngleResult:
     """Solve for phases from a polynomial spec.
 
@@ -235,9 +270,11 @@ def poly2angles(
             unaffected.
         validate: forwarded to :func:`target2angles` (default True).
         tol: forwarded to :func:`target2angles` (default ``1e-6``).
+        method: forwarded to :func:`target2angles`. ``"sym_qsp"`` (DEFAULT, the
+            symmetric-QSP Newton method) or ``"homotopy"`` (the fallback).
     """
     func, deg = _coerce_target(poly, degree, basis=basis)
-    return target2angles(func, deg, validate=validate, tol=tol)
+    return target2angles(func, deg, validate=validate, tol=tol, method=method)
 
 
 def response(x: float, phases: Sequence[float]) -> float:
@@ -261,6 +298,10 @@ def QuantumSignalProcessingPhases(
     whose ``sym_qsp`` path returns a 3-tuple), so the outputs are not
     interchangeable. Only the ``Wx`` signal operator is supported.
 
+    It solves with this package's default ``method="sym_qsp"`` (the
+    symmetric-QSP Newton method); pass ``method="homotopy"`` via ``**kwargs`` to
+    use the homotopy fallback instead.
+
     Args:
         poly: a callable, numpy ``Polynomial``/``Chebyshev``, or coefficient
             sequence. Coefficient inputs default to the Chebyshev basis (pass
@@ -283,7 +324,7 @@ def QuantumSignalProcessingPhases(
         raise NotImplementedError(
             f"signal_operator={signal_operator!r} is not supported; only 'Wx'."
         )
-    result = poly2angles(poly, basis=basis)
+    result = poly2angles(poly, basis=basis, **kwargs)
     if not result.converged:
         raise RuntimeError(
             "QSP angle solve did not converge "

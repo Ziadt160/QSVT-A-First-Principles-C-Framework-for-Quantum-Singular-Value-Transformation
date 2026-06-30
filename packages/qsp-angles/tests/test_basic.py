@@ -14,7 +14,48 @@ def test_core_importable():
     import qsp_angles._core as core
 
     assert hasattr(core, "poly_to_angles")
+    assert hasattr(core, "sym_qsp_poly_to_angles")
     assert hasattr(core, "response")
+
+
+@pytest.mark.parametrize("method", ["sym_qsp", "homotopy"])
+def test_methods_converge_odd_degree5(method):
+    # Both solvers must converge on the same odd degree-5 target 0.6*T_5.
+    f = lambda x: 0.6 * _T(5, x)
+    r = qa.target2angles(f, degree=5, method=method)
+    assert r.converged
+    assert r.residual < 1e-6
+    assert len(r.phases) == 6  # degree + 1
+    for x in (-0.9, -0.3, 0.0, 0.4, 0.85):
+        assert abs(qa.response(x, r.phases) - f(x)) < 1e-6
+
+
+@pytest.mark.parametrize("method", ["sym_qsp", "homotopy"])
+def test_methods_converge_even_degree2(method):
+    # Both solvers must converge on the same even degree-2 target 0.5*T_2.
+    f = lambda x: 0.5 * _T(2, x)
+    r = qa.poly2angles([0.0, 0.0, 0.5], method=method)  # 0.5 * T_2
+    assert r.converged
+    assert r.residual < 1e-6
+    assert len(r.phases) == 3  # degree + 1
+    for x in (-0.8, -0.2, 0.0, 0.3, 0.9):
+        assert abs(qa.response(x, r.phases) - f(x)) < 1e-6
+
+
+def test_sym_qsp_is_default_method():
+    # The default (no method=) must route to sym_qsp and agree with an explicit
+    # method="sym_qsp" call to the bit.
+    f = lambda x: 0.6 * _T(5, x)
+    r_default = qa.target2angles(f, degree=5)
+    r_sym = qa.target2angles(f, degree=5, method="sym_qsp")
+    assert np.allclose(np.asarray(r_default), np.asarray(r_sym), atol=0.0, rtol=0.0)
+
+
+def test_invalid_method_raises():
+    with pytest.raises(ValueError, match="method"):
+        qa.target2angles(lambda x: 0.7 * x, degree=1, method="bogus")
+    with pytest.raises(ValueError, match="method"):
+        qa.poly2angles([0.0, 0.7], method="newton")  # not a registered name
 
 
 def test_linear_target():

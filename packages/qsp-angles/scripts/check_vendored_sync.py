@@ -1,15 +1,19 @@
 #!/usr/bin/env python3
 """Guard against drift between the vendored QSP solver and the repo-root canonical source.
 
-The standalone ``qsp-angles`` package vendors two C++ files:
+The standalone ``qsp-angles`` package vendors four C++ files:
 
     packages/qsp-angles/src/QspAngleSolver.hpp
     packages/qsp-angles/src/QspAngleSolver.cpp
+    packages/qsp-angles/src/SymQspAngleSolver.hpp
+    packages/qsp-angles/src/SymQspAngleSolver.cpp
 
 These are copies of the repo-root canonical sources:
 
     include/QspAngleSolver.hpp
     src/QspAngleSolver.cpp
+    include/SymQspAngleSolver.hpp
+    src/SymQspAngleSolver.cpp
 
 Only two differences are *intentional* and are normalized away here before
 comparison:
@@ -17,7 +21,8 @@ comparison:
   1. A leading "VENDORED from ..." comment block in each vendored file.
   2. The Eigen include path: ``<eigen3/Eigen/Dense>`` (canonical) vs
      ``<Eigen/Dense>`` (vendored, so the wheel builds against system or fetched
-     Eigen).
+     Eigen). The ``<unsupported/Eigen/FFT>`` include (used by the sym_qsp solver)
+     is identical in both and needs no rewrite.
 
 If the algorithmic bodies diverge in any other way, this script prints a unified
 diff of the *normalized* contents and exits non-zero.
@@ -63,6 +68,11 @@ _VENDORED_COMMENT_MARKERS = (
     "// (<eigen3/Eigen/Dense> -> <Eigen/Dense>) so the standalone wheel builds",
     "// (<eigen3/Eigen/Dense> -> <Eigen/Dense>). Keep in sync with the root.",
     "// against either a system Eigen or a fetched one. Keep in sync with the root.",
+    # Extra marker lines used by the vendored SymQspAngleSolver.cpp, whose
+    # comment notes the unchanged unsupported-FFT include.
+    "// (<eigen3/Eigen/Dense> -> <Eigen/Dense>). The unsupported FFT include",
+    "// (<unsupported/Eigen/FFT>) is unchanged -- it resolves against both a",
+    "// system Eigen and a FetchContent Eigen. Keep in sync with the root.",
 )
 
 
@@ -156,6 +166,8 @@ def main() -> int:
     pairs = [
         (root / "include" / "QspAngleSolver.hpp", pkg / "src" / "QspAngleSolver.hpp", "QspAngleSolver.hpp"),
         (root / "src" / "QspAngleSolver.cpp", pkg / "src" / "QspAngleSolver.cpp", "QspAngleSolver.cpp"),
+        (root / "include" / "SymQspAngleSolver.hpp", pkg / "src" / "SymQspAngleSolver.hpp", "SymQspAngleSolver.hpp"),
+        (root / "src" / "SymQspAngleSolver.cpp", pkg / "src" / "SymQspAngleSolver.cpp", "SymQspAngleSolver.cpp"),
     ]
 
     all_ok = True

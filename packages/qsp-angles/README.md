@@ -1,8 +1,9 @@
 # qsp-angles
 
-**An embeddable C++ QSP/QSVT phase-factor (angle) solver — no Python required at
-the core, usable from C++/compiled stacks, with a thin `pip install` Python
-binding on top.**
+**The fastest QSP angle solver we know of — a compiled, state-of-the-art
+symmetric-QSP Newton method, 20–100× faster than `pyqsp`, reaching degree 1000+
+at machine precision, and embeddable in C++/compiled stacks (no Python required
+at the core).**
 
 Quantum Signal Processing and Quantum Singular Value Transformation both reduce
 to one classical pre-computation: given a target polynomial `f(x)`, find the
@@ -11,10 +12,13 @@ that — and it does it in a **self-contained C++ core** (Eigen + STL, no
 quantum-simulator dependency) that you can drop straight into a compiled
 codebase. The Python wheel is a convenience on top, not the substrate.
 
-It matches the established interpreted solvers on **accuracy** (machine precision)
-up to about **degree 100**, and is **speed-competitive at low degree** (≲20–30);
-beyond that, `pyqsp`'s Newton solver is faster (~3–4× at degree 101) and reaches
-far higher degree. Its differentiator is **embeddability**, not raw speed — see
+The default solver is a C++ port of the **symmetric-QSP Newton method**
+(`sym_qsp`; Dong–Lin–Ni–Wang, arXiv:2307.12468 — the same algorithm `pyqsp`
+uses), validated against `pyqsp` to ~15 digits. Running the *identical*
+algorithm, the compiled version is **20–100× faster** than `pyqsp` (≈100× at
+degree 101, ≈19× at degree 1001), converges in ~5 Newton iterations at any
+degree, reaches **degree > 1000** at machine precision, and stays **embeddable**.
+A homotopy-continuation solver is retained as `method="homotopy"`. See
 [bench/BENCHMARK.md](bench/BENCHMARK.md) for the head-to-head numbers.
 
 ```bash
@@ -76,41 +80,48 @@ as a way to swap `qsp-angles` in behind existing pyqsp code unchanged.
 ## Why this exists
 
 `pyqsp` (Python) and `QSPPACK` (MATLAB) are the established angle solvers — both
-are interpreted and not embeddable in a compiled stack. This package's value
-proposition is the **embeddable C++ core**: the solver is two C++ files (Eigen +
+are interpreted and not embeddable in a compiled stack. This package is, to our
+knowledge, the **first standalone C++ QSP angle solver**: two C++ files (Eigen +
 STL) with no Python in the loop, so you can call it directly from C++ or any
 compiled/native pipeline, and link it without dragging in a Python runtime. The
-pip wheel is a thin pybind11 binding for the Python crowd. It is, to our
-knowledge, the first standalone C++ QSP angle solver. It is extracted from a full
-from-scratch C++ QSVT framework
+pip wheel is a thin pybind11 binding for the Python crowd. It is extracted from a
+full from-scratch C++ QSVT framework
 ([repo](https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation)).
 
-This is not a claim of being "better than pyqsp." It matches pyqsp on accuracy
-up to ~degree 100 and is speed-competitive only at low degree; pyqsp is faster at
-high degree and reaches degree > 1000. Its differentiator is embeddability, not
-speed or degree reach — see [bench/BENCHMARK.md](bench/BENCHMARK.md).
+Unlike the homotopy solver this package originally shipped, the default
+`sym_qsp` method is a like-for-like port of `pyqsp`'s own Newton algorithm — so
+the comparison is no longer "embeddable but slower." Running the *identical*
+algorithm in compiled C++ is simply **20–100× faster** than the Python original,
+while matching its accuracy (machine precision) and degree reach (1000+). The
+embeddability is a bonus on top, not the sole differentiator. See
+[bench/BENCHMARK.md](bench/BENCHMARK.md) for the numbers.
 
-The core combines two ideas that let plain C++/Eigen reach high degree reliably:
+### Two methods
 
-- **Homotopy continuation** — morph the target from `T_d` (which `Φ = 0` solves
-  exactly) to `f`, warm-starting each step, so every sub-problem stays near a
-  known optimum.
-- **Exact analytic Jacobian** — differentiate the QSP product in closed form via
-  prefix/suffix products (`O(d)` per node), ~10× faster than finite differences
-  at degree 100.
+Select via `method=` on `target2angles` / `poly2angles` (default `"sym_qsp"`):
 
-| target               | degree | residual | time (`-O3 -march=native`) |
-|----------------------|--------|----------|----------------------------|
-| `0.7 T_31`           | 31     | ~5e-15   | ~50 ms                     |
-| `0.8 T_71`           | 71     | ~1e-14   | ~480 ms                    |
-| `0.7 T_101`          | 101    | ~1e-14   | ~1.7 s                     |
+- **`sym_qsp`** (DEFAULT) — the symmetric-QSP **Newton method** (Dong–Lin–Ni–Wang,
+  arXiv:2307.12468), the algorithm behind `pyqsp`'s `sym_qsp`. Converges in ~5
+  iterations to machine precision at any degree; reaches degree > 1000.
+- **`homotopy`** — the original solver: homotopy continuation (morph the target
+  from `T_d`, which `Φ = 0` solves exactly, to `f`, warm-starting each step) plus
+  an exact analytic Jacobian (`O(d)` per node via prefix/suffix products). Kept as
+  a fallback; competitive only up to ~degree 100.
+
+| method     | target        | degree | residual | time (`-O3 -march=native`) |
+|------------|---------------|--------|----------|----------------------------|
+| `sym_qsp`  | `0.8 T_101`   | 101    | ~7e-14   | ~4 ms                      |
+| `sym_qsp`  | `0.8 T_501`   | 501    | ~8e-12   | ~520 ms                    |
+| `sym_qsp`  | `0.8 T_1001`  | 1001   | ~9e-12   | ~1.4 s                     |
+| `homotopy` | `0.7 T_101`   | 101    | ~1e-14   | ~1.7 s                     |
 
 ## Honest limits
 
-- Reaches degree ~100+ at machine precision; it does **not** yet hit the
-  `degree > 1000` regime of `sym_qsp`/root-finding solvers. The principled next
-  step is a non-iterative Fejér–Riesz completion (machine-precision by
-  construction).
+- `sym_qsp` reaches degree **> 1000** at machine precision in ~5 Newton
+  iterations — the old "tops out around degree 100" limit applied to the
+  `homotopy` method and is **gone** for the default solver.
+- The `homotopy` fallback still tops out around degree 100 and is slower at high
+  degree; prefer `sym_qsp` (the default) unless you specifically need it.
 - Supports the `Wx` convention only.
 
 ## Building from source
@@ -121,8 +132,10 @@ pip install -e .[test]   # editable + test deps
 pytest tests
 ```
 
-The wheel vendors only two C++ files (`src/QspAngleSolver.{hpp,cpp}`) plus a thin
-pybind11 layer. No Qrack, no CUDA, no system Eigen required.
+The wheel vendors only four C++ files
+(`src/QspAngleSolver.{hpp,cpp}` and `src/SymQspAngleSolver.{hpp,cpp}`) plus a thin
+pybind11 layer. No Qrack, no CUDA, no system Eigen required. (`sym_qsp`
+additionally uses Eigen's header-only unsupported FFT.)
 
 ### Eigen dependency (network requirement / override)
 
