@@ -47,7 +47,7 @@ the independent cross-validation, writing all outputs to `bench/results/`
 ## Caveats (read before quoting numbers)
 
 - **Absolute timings are hardware-dependent.** Quote them only with the
-  provenance header. The *ratio* (≈20–100×) and the trend are the portable claim.
+  provenance header. The *ratio* (≈25–70× here) and the trend are the portable claim.
 - **Correctness is hardware-independent.** The validation residuals (~1e-14) are
   reproducible anywhere; that is the part to lean on.
 - **`-march=native` + FFT** means the last bits can differ across CPUs. The

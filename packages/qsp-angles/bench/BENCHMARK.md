@@ -3,58 +3,67 @@
 **Question:** is this solver actually useful, or does `pyqsp` already do everything
 better? This benchmark answers it honestly.
 
-> **TL;DR — read the sym_qsp section first.** The package now ships a C++ port of
-> the **symmetric-QSP Newton method** (`sym_qsp`, the same algorithm pyqsp uses),
-> and it is the **default** solver. It is machine-precision, **19–100× faster than
-> pyqsp**, reaches **degree > 1000**, and is **embeddable** (Eigen + STL, no
-> Python). It supersedes the homotopy solver benchmarked below on every axis. The
-> original homotopy-vs-pyqsp section is kept for context.
+> **TL;DR — read the sym_qsp section first.** The package ships an **embeddable**
+> C++ port of the **symmetric-QSP Newton method** (`sym_qsp`; Dong–Lin–Ni–Wang,
+> arXiv:2307.12468 — the same algorithm pyqsp uses), and it is the **default**
+> solver. It is machine-precision, reaches **degree > 1000**, and is callable from
+> a compiled stack with no Python (Eigen + STL). Because it runs the *identical*
+> algorithm as pyqsp's `newton_solver`, the speed difference is a
+> compiled-vs-interpreted constant factor (**tens-fold; ~25–70× on the machine
+> below**), not a better algorithm — the genuine differentiator is embeddability.
 
 ## sym_qsp: the embeddable Newton solver
 
-This is the recommended path: a faithful C++ port of pyqsp's `sym_qsp`
-(Dong–Lin–Ni–Wang robust symmetric-QSP Newton method, arXiv:2307.12468),
-validated against pyqsp to ~15 digits. Both implementations run **the same
-algorithm**, so this is a like-for-like race — and the compiled version wins
-decisively while staying embeddable in a C++ stack.
+A faithful C++ port of pyqsp's `sym_qsp` (Dong–Lin–Ni–Wang robust symmetric-QSP
+Newton method, arXiv:2307.12468), validated against pyqsp to ~15 digits. The
+honest framing: this is **not a new algorithm** and **not a better algorithm** —
+it is the same Newton method, compiled, so it can be embedded in a C++ pipeline.
+The speedup is the expected compiled-vs-interpreted constant factor; we report it
+for completeness, not as a contribution.
 
-- **Target:** scaled Chebyshev `f(x) = 0.8 · T_d(x)` (parity `d mod 2`, `|f| ≤ 0.8`),
-  isolating angle-finding from approximation, same as below.
-- **C++ sym_qsp:** `SymQspAngleSolver`, `g++ -O3 -march=native`. Residual = max
-  `|Re⟨0|U|0⟩ − f|` over a 401-point grid on `[-1,1]` (Re convention).
-- **pyqsp sym_qsp:** `QuantumSignalProcessingPhases(method="sym_qsp",
-  signal_operator="Wx")` — pyqsp's own Newton solver. Residual = its self-reported
-  final optimizer error. Both converge in **5 Newton iterations** to machine
-  precision; only the wall-clock differs. Median of 3 runs after warm-up.
+- **Same function, both sides.** C++ `SymQspAngleSolver` vs pyqsp's own
+  `pyqsp.sym_qsp_opt.newton_solver` (NOT the higher-level
+  `QuantumSignalProcessingPhases`, which wraps extra work the C++ core does not do).
+- **Target:** scaled Chebyshev `f(x) = 0.8 · T_d(x)`, isolating angle-finding from
+  polynomial approximation.
+- **Pinned & single-threaded.** Both timed single-thread; see the provenance
+  header from `run_all.sh`. Numbers below: one run, Intel i7-9750H, g++ 12.4
+  `-O3 -march=native`, pyqsp 0.2.0 / numpy 2.5.0 / scipy 1.18.0. Median of 3 runs
+  for degree ≤ 101, single run above (slow, low-variance). Both converge in **5
+  Newton iterations** to machine precision.
 
-| degree | C++ sym_qsp | pyqsp sym_qsp | speedup |
-|-------:|------------:|--------------:|--------:|
-| 101  | **4.1 ms**   | 413 ms    | ~100× |
-| 201  | **39 ms**    | 2147 ms   | ~55×  |
-| 501  | **523 ms**   | 11372 ms  | ~22×  |
-| 1001 | **1392 ms**  | 26915 ms  | ~19×  |
+| degree | C++ sym_qsp | pyqsp `newton_solver` | speedup |
+|-------:|------------:|----------------------:|--------:|
+| 11   | 0.2 ms   | 6.6 ms      | ~33× |
+| 21   | 0.6 ms   | 15.7 ms     | ~26× |
+| 51   | 2.1 ms   | 82.9 ms     | ~39× |
+| 101  | 3.9 ms   | 281 ms      | ~72× |
+| 201  | 24.7 ms  | 1278 ms     | ~52× |
+| 501  | 285 ms   | 8127 ms     | ~28× |
+| 1001 | 1009 ms  | 28316 ms    | ~28× |
 
-Both reach machine precision (residual ~1e-14…1e-12) in 5 iterations; the C++ port
-also handles degree **> 1000** comfortably (degree 1001 in ~1.4 s). Hardware
-varies, but the trend — a 1–2 order-of-magnitude constant-factor win from
-compiling the identical algorithm — is the point.
-
-Reproduce: build/run `bench_symqsp_core.cpp` (CSV `degree,iters,time_ms,residual`;
-see its header) and `bench_pyqsp.py`.
+Both reach machine precision (C++ residual ~1e-14…1e-12; pyqsp self-err similar).
+**Absolute timings are hardware-dependent and WSL2 timing is noisy** — quote them
+only with the provenance header; the portable claim is "tens-fold, one-to-nearly-
+two orders of magnitude." These numbers match the committed CSVs in `results/`
+(regenerate with `run_all.sh`); see [SAMPLE_RUN.md](SAMPLE_RUN.md).
 
 ### Verdict (sym_qsp)
 
+- **Embeddability: the only genuine differentiator** — two C++ files (Eigen + STL),
+  callable from a compiled stack with no Python runtime. This is the reason to use it.
 - **Accuracy: tie** — both machine precision, 5 Newton iterations, at any degree.
-- **Speed: the C++ port wins by 19–100×** running the *same* algorithm — pure
-  compiled-vs-interpreted constant factor.
-- **Degree reach: tie-and-then-some** — both reach degree > 1000; the C++ port
-  does it in ~1.4 s.
-- **Embeddability: only the C++ port has it** — two C++ files (Eigen + STL),
-  callable from a compiled stack with no Python runtime.
+- **Degree reach: tie** — both reach degree > 1000 (C++ does it in ~1 s).
+- **Speed: a compiled-vs-interpreted constant factor (~25–70× here)** running the
+  *same* algorithm. Real, but expected — not a contribution, and angle-finding is
+  a one-time offline precompute that is rarely anyone's bottleneck.
 
-**Conclusion.** The C++ `sym_qsp` port is **the fastest QSP angle solver we know
-of**: machine-precision, 19–100× faster than pyqsp, degree 1000+, *and*
-embeddable. It is now the package default and supersedes the homotopy solver.
+**Conclusion.** This is an **embeddable C++ implementation of the state-of-the-art
+symmetric-QSP Newton method**, validated against pyqsp to machine precision and
+reaching degree 1000+. Its value is being callable from a compiled quantum
+toolchain without a Python runtime — not being "faster" in any way that matters to
+someone who runs angle-finding once and caches the result. It is the package
+default and supersedes the homotopy solver below.
 
 ---
 
@@ -111,9 +120,9 @@ degree ~31 up).
 **Conclusion (and what changed).** As a *homotopy* solver this was "not a faster
 pyqsp" — its only edge was embeddability. The roadmap item flagged here was to
 bring the **Newton / `sym_qsp`** method into C++. That is now done (see the
-sym_qsp section at the top): the C++ Newton port keeps the embeddability **and**
-beats pyqsp on speed (19–100×) while matching its degree reach (1000+) and
-machine precision. So the homotopy solver below is superseded as the default,
+sym_qsp section at the top): the C++ Newton port keeps the embeddability while
+matching pyqsp's degree reach (1000+) and machine precision, and runs the same
+algorithm at compiled speed (a ~25–70× constant factor here). So the homotopy solver below is superseded as the default,
 and its high-degree cost (inflated by the conservative `2·d`-step homotopy
 schedule) no longer matters for the recommended path. The homotopy solver
 remains available as `method="homotopy"`.

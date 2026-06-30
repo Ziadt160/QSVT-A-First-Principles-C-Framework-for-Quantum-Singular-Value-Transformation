@@ -36,10 +36,15 @@ echo "=== provenance ==="            | tee "$OUT/provenance.txt"
   echo "python:   $(python3 --version 2>&1)"
   python3 - <<'PY' 2>/dev/null || true
 import importlib
+from importlib import metadata
 for m in ("pyqsp", "numpy", "scipy"):
     try:
-        mod = importlib.import_module(m)
-        print(f"{m:8} {getattr(mod,'__version__','?')}")
+        importlib.import_module(m)
+        try:
+            ver = metadata.version(m)        # distribution version (pyqsp lacks __version__)
+        except metadata.PackageNotFoundError:
+            ver = "?"
+        print(f"{m:8} {ver}")
     except Exception as e:
         print(f"{m:8} (missing: {e})")
 PY

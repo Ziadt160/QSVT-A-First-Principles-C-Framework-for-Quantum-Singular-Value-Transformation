@@ -291,16 +291,6 @@ Acknowledgements
 - Uses Qrack for the quantum simulator backend ([https://github.com/vmorgner/qrack](https://github.com/unitaryfoundation/qrack))
 - Eigen for linear algebra
 
----
-
-If you want, I can also:
-
-- Add a short `docs/` folder with references and math notes for KAK and CS decomposition.
-- Add example notebooks (Python/C++) that show how to run small end-to-end examples.
-- Produce a short tutorial section that walks through a simple 1- or 2-qubit QSP example and the corresponding angle calculations.
-
-Tell me which of those you'd like next and I will prepare it.
-
 Selected research papers and resources
 -------------------------------------
 
