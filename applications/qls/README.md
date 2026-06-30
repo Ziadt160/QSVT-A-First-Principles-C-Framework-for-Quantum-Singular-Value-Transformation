@@ -27,8 +27,37 @@ ill-conditioned inversion. The polynomial's Chebyshev coefficients feed `sym_qsp
 unchanged; the reported subnormalization `c` (≈ 1/(2κ)) sets the un-amplified
 success probability for W2.
 
-## Next (W2)
+## W2 — the QLS pipeline, dense validation (done)
 
-Wire this polynomial through `QsvtPipeline` (block-encode normalized Hermitian
-`A`, apply QSVT, post-select, read out `|x>` on Qrack), validate fidelity vs exact
-`A⁻¹b`, and start the resource table. See the scope doc.
+[`qls_dense.py`](qls_dense.py) wires the W1 polynomial all the way through:
+`p ≈ c/x → sym_qsp angles → QSVT block P(A) → solve A x = b`, validated with exact
+linear algebra (no simulator). The QSVT block is built to match the project's
+verified construction (`src/QsvtPipeline.cpp`); the linear-system operator is the
+Hermitian part `f(A) = (P(A)+P(A)†)/2 ≈ c·A⁻¹` (the circuit realises this via an
+LCU of `U_Phi` and `U_Phi†`, +1 ancilla). Angles come from *this* project's
+zero-dependency solver through its C ABI (built with `g++`, no Eigen — the sym_qsp
+core is dependency-free).
+
+**Result (run it: `python qls_dense.py`).** Across n = 1–4 qubits (up to 16×16)
+and κ = 4, 8, 16 at ε = 1e-3:
+
+| metric | result |
+|---|---|
+| state fidelity `\|<x_exact\|x_qsvt>\|` | **1.000000** (every case) |
+| operator rel-error `‖f(A) − cA⁻¹‖ / ‖cA⁻¹‖` | ~5e-4 (≤ ε) |
+| sym_qsp angle residual (degree 35–145) | ~1e-14 |
+| un-amplified success probability | 0.04–0.38 (shrinks with κ, dim) |
+
+So the **math of the pipeline is correct end to end**: fidelity 1.0 vs the exact
+solution, operator error bounded by the approximation error, and the angle solver
+comfortably handling the high degrees ill-conditioning demands. The success
+probability is finite but < 1 — quantifying exactly why **amplitude amplification**
+is the Phase-2 efficiency step.
+
+## Next
+
+- **W2b:** run the compiled circuit on the Qrack simulator (gate-level
+  confirmation of the dense result; needs the framework built with Qrack).
+- **W3:** resource estimation (CNOT / T / depth / qubits) vs (n, κ, ε).
+- **W4:** full sweeps + the degree-vs-κ and cost curves for the paper. See the
+  [scope doc](../../docs/phase1-qls-scope.md).
