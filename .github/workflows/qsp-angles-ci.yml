@@ -61,3 +61,12 @@ jobs:
           OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
             python packages/qsp-angles/bench/validate_vs_pyqsp.py \
               --manifest cases.txt --cpp-bin ./qsp_validate
+
+      - name: Build + run the C ABI example (pure-C client links the C++ solver)
+        run: |
+          cd packages/qsp-angles/capi
+          g++ -O3 -std=c++17 -Wall -Wextra -I../src -I/usr/include/eigen3 -c \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp
+          ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o
+          gcc -O2 -Wall -Wextra -std=c11 example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c
+          ./example_c
