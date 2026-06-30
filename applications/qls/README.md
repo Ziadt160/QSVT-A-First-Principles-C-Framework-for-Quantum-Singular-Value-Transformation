@@ -88,10 +88,40 @@ Phase 2**, not the dense Shannon decomposition used here.
 > at n ≥ 2. The dense (operator-level) W2 validation above already confirms the
 > math; this is a simulator-robustness fix for proper W2b.
 
+## Phase 2 — sparse block-encoding: breaking the gate-count wall
+
+[`lcu_block_encoding.py`](lcu_block_encoding.py) is the spike for the fix. For a
+matrix written as a sum of few unitaries `A = Σ_k c_k P_k` (a local Hamiltonian),
+the **LCU (PREPARE + SELECT)** construction block-encodes `A/α` (`α = Σ|c_k|`)
+in `O(L · poly(n))` gates instead of the dense `~0.58·4ⁿ`:
+
+```
+PREPARE |0>_a = Σ_k sqrt(|c_k|/α) |k>        SELECT = Σ_k |k><k|_a ⊗ (c_k/|c_k|)P_k
+U = (PREPARE† ⊗ I) SELECT (PREPARE ⊗ I)   =>   <0|_a U |0>_a = A/α
+```
+
+**Result (run it: `python lcu_block_encoding.py`).** For a 1D transverse-field
+Ising chain (`L = 2n−1` terms), validated densely:
+
+| n | LCU CNOTs | dense CNOTs | speedup | block error |
+|--:|--:|--:|--:|--:|
+| 4  | 68  | 594       | 9×    | 3e-16 |
+| 6  | 136 | 9,503     | 70×   | 1e-17 |
+| 8  | 174 | 152,000   | 874×  | 6e-16 |
+| 10 | 282 | 2,433,000 | 8,627× | — (dense check capped at n≤8) |
+
+The block-encoding is exact (`block == A/α` to ~1e-16) and the gate count grows
+**~linearly** in n, vs `4ⁿ` for the dense path. This is the construction that
+makes large n feasible — and `282 gates on 15 qubits` is the **few-gates,
+many-qubits** regime where GPU statevector simulation (the Qrack/CUDA backend)
+finally wins.
+
 ## Next
 
-- **W2b:** harden + run the compiled circuit on Qrack for gate-level confirmation
-  at n ≥ 2 (fix the segfault above).
-- **W3:** add a T-count estimate to the resource table.
-- **W4:** full sweeps + the degree-vs-κ and cost curves for the paper. See the
-  [scope doc](../../docs/phase1-qls-scope.md).
+- **Phase 2 (C++):** implement LCU PREPARE/SELECT as native-gate primitives
+  (the framework's `Lcu` already does the Pauli decomposition), wire it into
+  `QsvtPipeline` as an alternative to the dense block-encoding, and confirm on
+  Qrack at n ≫ 6 (where dense dies and the GPU helps).
+- **W2b:** harden the QSVT circuit-on-Qrack path (fix the n ≥ 2 segfault).
+- **W3/W4:** T-count estimate, full sweeps + the degree-vs-κ and cost curves for
+  the paper. See the [scope doc](../../docs/phase1-qls-scope.md).
