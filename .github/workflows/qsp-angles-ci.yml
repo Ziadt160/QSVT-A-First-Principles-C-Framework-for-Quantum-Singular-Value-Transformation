@@ -44,5 +44,20 @@ jobs:
             -I packages/qsp-angles/src \
             packages/qsp-angles/tests/smoke.cpp \
             packages/qsp-angles/src/QspAngleSolver.cpp \
+            packages/qsp-angles/src/SymQspAngleSolver.cpp \
             -o qsp_smoke
           ./qsp_smoke
+
+      - name: Independent cross-validation vs pyqsp
+        run: |
+          pip install pyqsp
+          g++ -O3 -march=native -DNDEBUG -std=c++17 \
+            -I/usr/include/eigen3 \
+            -I packages/qsp-angles/src \
+            packages/qsp-angles/bench/validate.cpp \
+            packages/qsp-angles/src/SymQspAngleSolver.cpp \
+            packages/qsp-angles/src/QspAngleSolver.cpp \
+            -o qsp_validate
+          OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+            python packages/qsp-angles/bench/validate_vs_pyqsp.py \
+              --manifest cases.txt --cpp-bin ./qsp_validate
