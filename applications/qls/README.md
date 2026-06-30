@@ -100,27 +100,34 @@ PREPARE |0>_a = Σ_k sqrt(|c_k|/α) |k>        SELECT = Σ_k |k><k|_a ⊗ (c_k/|
 U = (PREPARE† ⊗ I) SELECT (PREPARE ⊗ I)   =>   <0|_a U |0>_a = A/α
 ```
 
-**Result (run it: `python lcu_block_encoding.py`).** For a 1D transverse-field
-Ising chain (`L = 2n−1` terms), validated densely:
+**Idealized estimate** (`python lcu_block_encoding.py`, an analytic gate model)
+vs the **actual C++ native-gate synthesis** (`LcuBlockEncoding`, decomposed to
+`{single-qubit, CNOT}` and validated by `denseCircuit`). For a 1D transverse-field
+Ising chain (`L = 2n−1` terms):
 
-| n | LCU CNOTs | dense CNOTs | speedup | block error |
-|--:|--:|--:|--:|--:|
-| 4  | 68  | 594       | 9×    | 3e-16 |
-| 6  | 136 | 9,503     | 70×   | 1e-17 |
-| 8  | 174 | 152,000   | 874×  | 6e-16 |
-| 10 | 282 | 2,433,000 | 8,627× | — (dense check capped at n≤8) |
+| n | est. CNOTs | **C++ CNOTs** | dense CNOTs | C++ vs dense | block err |
+|--:|--:|--:|--:|--:|--:|
+| 2 | 24  | 60  | 37     | 0.6×  | 2e-15 |
+| 4 | 68  | 272 | 594    | 2.2×  | 8e-15 |
+| 5 | 117 | 522 | 2,376  | 4.6×  | 2e-14 |
+| 6 | 136 | 636 | 9,503  | 14.9× | 2e-14 |
 
-The block-encoding is exact (`block == A/α` to ~1e-16) and the gate count grows
-**~linearly** in n, vs `4ⁿ` for the dense path. This is the construction that
-makes large n feasible — and `282 gates on 15 qubits` is the **few-gates,
-many-qubits** regime where GPU statevector simulation (the Qrack/CUDA backend)
-finally wins.
+The native-gate block-encoding is **exact** (`block == A/α` to ~1e-14) and **poly(n)**
+(60→636, ~linear vs `4ⁿ`). Honest caveat: the real multi-controlled-Pauli synthesis
+costs ~4–5× the idealized estimate, so it only *beats* the dense path from n≈4 — but
+poly(n) vs `4ⁿ` means the advantage then explodes (14.9× at n=6, ~1000×+ by n=10).
+This is the few-gates / many-qubits regime where the Qrack/CUDA GPU finally wins.
+
+Implemented in [`include/LcuBlockEncoding.hpp`](../../include/LcuBlockEncoding.hpp) /
+[`src/LcuBlockEncoding.cpp`](../../src/LcuBlockEncoding.cpp); validated by
+[`lcu_be_validate.cpp`](lcu_be_validate.cpp): PREPARE (uniformly-controlled Ry
+state-prep) + SELECT (multi-controlled Paulis), all from `{single, CNOT}`.
 
 ## Next
 
-- **Phase 2 (C++):** implement LCU PREPARE/SELECT as native-gate primitives
-  (the framework's `Lcu` already does the Pauli decomposition), wire it into
-  `QsvtPipeline` as an alternative to the dense block-encoding, and confirm on
+- **Phase 2 (C++):** ✅ native-gate `LcuBlockEncoding` done & validated. Next:
+  reduce the multi-controlled-gate constant (v-chain / borrowed ancilla), wire it
+  into `QsvtPipeline` as an alternative to the dense block-encoding, and run on
   Qrack at n ≫ 6 (where dense dies and the GPU helps).
 - **W2b:** harden the QSVT circuit-on-Qrack path (fix the n ≥ 2 segfault).
 - **W3/W4:** T-count estimate, full sweeps + the degree-vs-κ and cost curves for
