@@ -70,3 +70,16 @@ jobs:
           ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o
           gcc -O2 -Wall -Wextra -std=c11 example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c
           ./example_c
+
+      - name: Python-via-ctypes example (C ABI, no pybind)
+        run: |
+          cd packages/qsp-angles/capi
+          g++ -O3 -fPIC -shared -std=c++17 -I../src -I/usr/include/eigen3 \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp \
+            -o libqsp_angles_c.so
+          python example_ctypes.py ./libqsp_angles_c.so
+
+      - name: Build + run the Rust crate example (links the C ABI)
+        run: |
+          cd packages/qsp-angles/rust
+          cargo run --quiet --example solve
