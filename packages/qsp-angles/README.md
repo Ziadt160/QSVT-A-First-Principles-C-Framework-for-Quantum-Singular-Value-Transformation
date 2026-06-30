@@ -52,6 +52,22 @@ is the standard QSP/QSVT field convention. Pass `basis="monomial"` for ascending
 power-basis coefficients. A numpy `Chebyshev` or `Polynomial` object passed
 directly is honored in its own basis.
 
+### Circuits (OpenQASM 3 / Qiskit)
+
+Turn solved phases into a runnable single-qubit QSP circuit:
+
+```python
+from qsp_angles import circuits
+
+qasm = circuits.qsp_qasm3(r.phases, x=0.3)   # OpenQASM 3 string (no deps)
+qc, theta = circuits.to_qiskit(r.phases)     # parameterized QuantumCircuit
+                                             # (pip install qsp-angles[qiskit])
+```
+
+Convention (exact, no global phase): `W(x) = rx(-2 arccos x)`, `E(phi) = rz(-2 phi)`.
+For full QSVT of a matrix function, use the same phases but replace `W(x)` with
+your block-encoding and `E(phi)` with projector-controlled ancilla rotations.
+
 ### A familiar, similarly-named convenience wrapper
 
 `QuantumSignalProcessingPhases` is named after the pyqsp entry point so the call

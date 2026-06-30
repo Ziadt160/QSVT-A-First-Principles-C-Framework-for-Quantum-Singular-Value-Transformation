@@ -51,6 +51,7 @@ from typing import Callable, Sequence, Union
 import numpy as np
 
 from . import _core
+from . import circuits  # circuit adapters (OpenQASM 3 / Qiskit); pure-Python
 
 __all__ = [
     "AngleResult",
@@ -58,6 +59,7 @@ __all__ = [
     "poly2angles",
     "response",
     "QuantumSignalProcessingPhases",
+    "circuits",
 ]
 
 __version__ = "0.1.0"
