@@ -58,8 +58,12 @@ compiler that statically links libstdc++; the ABI itself is plain C.)
   `qsp-angles` crate is the natural next step.
 - **Julia:** `ccall((:qsp_solve_chebyshev, "libqsp_angles_c"), ...)`.
 - **Go:** cgo with `#include "qsp_angles.h"`.
-- **Python without pybind:** `ctypes`/`cffi` against the shared lib (the pip
-  wheel uses pybind11; this is the no-build-dependency alternative).
+- **Python without pybind:** `ctypes`/`cffi` against the shared lib — see
+  [example_ctypes.py](example_ctypes.py) (stdlib only; works with no `python3-dev`
+  and no wheel build). The pip wheel uses pybind11; this is the dependency-free
+  alternative.
+- **Rust:** a thin safe crate lives in [../rust/](../rust) (`build.rs` compiles
+  this C ABI via the `cc` crate).
 
 ## Status codes
 

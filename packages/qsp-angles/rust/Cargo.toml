@@ -1,0 +1,19 @@
+[package]
+name = "qsp-angles"
+version = "0.1.0"
+edition = "2021"
+license = "MIT"
+description = "Embeddable QSP/QSVT angle (phase-factor) solver — safe Rust bindings over a C++ symmetric-QSP Newton solver (no Python)."
+repository = "https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation"
+keywords = ["quantum", "qsp", "qsvt", "phase-factors", "angle-finding"]
+categories = ["science", "api-bindings"]
+links = "qsp_angles_c"
+
+# build.rs compiles the C++ core + C ABI via the `cc` crate. Eigen headers must
+# be available: it looks at $EIGEN_INCLUDE, then /usr/include/eigen3. See README.
+[build-dependencies]
+cc = "1.0"
+
+[[example]]
+name = "solve"
+path = "examples/solve.rs"
