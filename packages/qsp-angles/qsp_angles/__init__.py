@@ -20,9 +20,19 @@ True
 >>> abs(qa.response(0.3, r.phases) - 0.7 * 0.3) < 1e-9
 True
 
-pyqsp-compatible entry point
-----------------------------
+Polynomial coefficients default to the **Chebyshev** basis (the QSP/QSVT field
+convention). Pass ``basis="monomial"`` for ascending power-basis coefficients:
+
 >>> import numpy as np
+>>> r = qa.poly2angles([0.0, 0.0, 1.0])            # T_2 = 2 x^2 - 1
+>>> r = qa.poly2angles([0.0, 0.0, 1.0], basis="monomial")  # x^2
+
+A familiar convenience wrapper
+------------------------------
+``QuantumSignalProcessingPhases`` is named after the pyqsp entry point for
+familiarity, but it is **not** a drop-in replacement -- see its docstring and
+the README "Differences from pyqsp" note.
+
 >>> from qsp_angles import QuantumSignalProcessingPhases
 >>> phases = QuantumSignalProcessingPhases([0.0, 0.7], signal_operator="Wx")  # 0.7 * x
 """
@@ -48,6 +58,9 @@ __version__ = "0.1.0"
 
 PolyLike = Union[Callable[[float], float], Sequence[float], np.ndarray, "np.polynomial.Polynomial"]
 
+# Default convergence tolerance on the worst-case grid residual.
+_DEFAULT_TOL = 1e-6
+
 
 @dataclass
 class AngleResult:
@@ -55,8 +68,10 @@ class AngleResult:
 
     Attributes:
         phases: length ``degree + 1`` symmetric phase sequence (Wx convention).
-        residual: worst-case ``|Re<0|U|0> - f|`` over a fine grid on [-1, 1].
-        converged: whether ``residual < 1e-6``.
+        residual: worst-case ``|Re<0|U|0> - f|`` over a fine grid on [-1, 1]
+            (reported by the C++ solver).
+        converged: whether ``residual < tol`` (the ``tol`` passed to the solve;
+            default ``1e-6``).
     """
 
     phases: np.ndarray
@@ -71,14 +86,37 @@ class AngleResult:
         return len(self.phases)
 
 
-def _coerce_target(poly: PolyLike, degree: "int | None"):
+def _trim_trailing_zeros(coeffs: np.ndarray, tol: float = 1e-12) -> np.ndarray:
+    """Drop trailing (near-)zero coefficients so the inferred degree is true.
+
+    Always keeps at least one coefficient.
+    """
+    nz = np.nonzero(np.abs(coeffs) > tol)[0]
+    if nz.size == 0:
+        return coeffs[:1]
+    return coeffs[: nz[-1] + 1]
+
+
+def _coerce_target(poly: PolyLike, degree: "int | None", basis: str = "chebyshev"):
     """Return (callable_target, degree) from a polynomial spec.
 
-    Accepts a callable (degree required), a numpy Polynomial, or a sequence of
-    coefficients in the **monomial** basis (ascending order), matching numpy's
-    ``Polynomial`` convention.
+    Accepts:
+
+    * a bare callable -- ``degree`` is required and ``basis`` is ignored;
+    * a numpy ``Polynomial`` or ``Chebyshev`` object -- honored as-is in its own
+      basis (``basis`` is ignored);
+    * a sequence of coefficients -- interpreted in ``basis`` (one of
+      ``"chebyshev"`` (DEFAULT, the QSP/QSVT field convention) or ``"monomial"``,
+      ascending order).
+
+    Trailing near-zero coefficients are trimmed before inferring the degree.
     """
-    # numpy Polynomial (or anything exposing a numeric degree() + __call__).
+    # numpy Chebyshev: honor its own (Chebyshev) basis.
+    if isinstance(poly, np.polynomial.Chebyshev):
+        deg = int(poly.degree()) if degree is None else int(degree)
+        return (lambda x: float(poly(x))), deg
+
+    # numpy Polynomial: honor its own (power/monomial) basis.
     if isinstance(poly, np.polynomial.Polynomial):
         deg = int(poly.degree()) if degree is None else int(degree)
         return (lambda x: float(poly(x))), deg
@@ -88,32 +126,118 @@ def _coerce_target(poly: PolyLike, degree: "int | None"):
             raise ValueError("degree is required when the target is a callable")
         return (lambda x: float(poly(x))), int(degree)
 
+    if basis not in ("chebyshev", "monomial"):
+        raise ValueError(
+            f"basis must be 'chebyshev' or 'monomial', got {basis!r}"
+        )
+
     coeffs = np.asarray(poly, dtype=float).ravel()
     if coeffs.size == 0:
         raise ValueError("empty coefficient sequence")
-    p = np.polynomial.Polynomial(coeffs)
+    coeffs = _trim_trailing_zeros(coeffs)
+
+    if basis == "chebyshev":
+        p = np.polynomial.Chebyshev(coeffs)
+    else:
+        p = np.polynomial.Polynomial(coeffs)
     deg = int(coeffs.size - 1) if degree is None else int(degree)
     return (lambda x: float(p(x))), deg
 
 
-def target2angles(func: Callable[[float], float], degree: int) -> AngleResult:
+def _validate_target(func: Callable[[float], float], degree: int) -> None:
+    """Sanity-check a target before solving.
+
+    Raises ``ValueError`` if the target exceeds ``|f| <= 1`` on a grid of
+    [-1, 1], or if its parity does not match ``degree % 2`` (even degree must be
+    an even function, odd degree an odd function).
+    """
+    grid = np.linspace(-1.0, 1.0, 257)
+    vals = np.array([float(func(float(x))) for x in grid])
+
+    max_abs = float(np.max(np.abs(vals)))
+    if max_abs > 1.0 + 1e-9:
+        raise ValueError(
+            "target violates |f(x)| <= 1 on [-1, 1]: "
+            f"max|f| = {max_abs:.6g} (> 1). QSP can only realise polynomials "
+            "bounded by 1 in magnitude; rescale the target (e.g. multiply by a "
+            "factor < 1) before solving."
+        )
+
+    # Parity check: f(-x) should equal +f(x) (even, deg even) or -f(x) (odd).
+    want_even = (degree % 2) == 0
+    sign = 1.0 if want_even else -1.0
+    # Sample symmetric pairs off zero (skip the midpoint, which is trivially
+    # self-symmetric).
+    xs = np.linspace(0.0, 1.0, 129)[1:]
+    pos = np.array([float(func(float(x))) for x in xs])
+    neg = np.array([float(func(float(-x))) for x in xs])
+    scale = max(1.0, float(np.max(np.abs(pos))))
+    parity_err = float(np.max(np.abs(neg - sign * pos))) / scale
+    if parity_err > 1e-6:
+        want = "even" if want_even else "odd"
+        raise ValueError(
+            f"target parity mismatch: degree={degree} requires an {want} "
+            f"function (f(-x) = {'+' if want_even else '-'}f(x)), but the "
+            f"sampled parity error is {parity_err:.3g}. Check that the target's "
+            "parity matches degree % 2, or pass the correct degree."
+        )
+
+
+def target2angles(
+    func: Callable[[float], float],
+    degree: int,
+    validate: bool = True,
+    tol: float = _DEFAULT_TOL,
+) -> AngleResult:
     """Solve for phases approximating an arbitrary real callable ``func``.
 
     ``func`` must satisfy ``|func(x)| <= 1`` on [-1, 1] and have parity
     ``degree mod 2`` (even degree -> even function, odd degree -> odd function).
+
+    Args:
+        func: real target callable on [-1, 1].
+        degree: degree ``d`` of the target polynomial.
+        validate: when True (default), check ``|f| <= 1`` and parity on a grid
+            and raise ``ValueError`` with an actionable message on violation.
+        tol: convergence tolerance; ``AngleResult.converged`` is set to
+            ``residual < tol`` (default ``1e-6``). The C++ solver always reports
+            the raw worst-case residual.
     """
-    d = _core.poly_to_angles(lambda x: float(func(x)), int(degree))
+    d = int(degree)
+    if validate:
+        _validate_target(func, d)
+    res = _core.poly_to_angles(lambda x: float(func(x)), d)
+    residual = float(res["residual"])
     return AngleResult(
-        phases=np.asarray(d["phases"], dtype=float),
-        residual=float(d["residual"]),
-        converged=bool(d["converged"]),
+        phases=np.asarray(res["phases"], dtype=float),
+        residual=residual,
+        converged=bool(residual < tol),
     )
 
 
-def poly2angles(poly: PolyLike, degree: "int | None" = None) -> AngleResult:
-    """Solve for phases from a polynomial spec (coeffs, numpy Polynomial, or callable)."""
-    func, deg = _coerce_target(poly, degree)
-    return target2angles(func, deg)
+def poly2angles(
+    poly: PolyLike,
+    degree: "int | None" = None,
+    basis: str = "chebyshev",
+    validate: bool = True,
+    tol: float = _DEFAULT_TOL,
+) -> AngleResult:
+    """Solve for phases from a polynomial spec.
+
+    Args:
+        poly: a callable, a numpy ``Polynomial``/``Chebyshev`` object, or a
+            sequence of coefficients.
+        degree: degree override (required for a bare callable; inferred
+            otherwise).
+        basis: ``"chebyshev"`` (DEFAULT, the QSP/QSVT field convention) or
+            ``"monomial"`` for coefficient inputs. A numpy ``Polynomial`` or
+            ``Chebyshev`` object is honored in its own basis; a bare callable is
+            unaffected.
+        validate: forwarded to :func:`target2angles` (default True).
+        tol: forwarded to :func:`target2angles` (default ``1e-6``).
+    """
+    func, deg = _coerce_target(poly, degree, basis=basis)
+    return target2angles(func, deg, validate=validate, tol=tol)
 
 
 def response(x: float, phases: Sequence[float]) -> float:
@@ -124,20 +248,47 @@ def response(x: float, phases: Sequence[float]) -> float:
 def QuantumSignalProcessingPhases(
     poly: PolyLike,
     signal_operator: str = "Wx",
+    basis: str = "chebyshev",
     **kwargs,
 ) -> np.ndarray:
-    """pyqsp-compatible alias: return just the phase array for ``poly``.
+    """Convenience wrapper returning just this package's phase array for ``poly``.
 
-    Mirrors ``pyqsp.angle_sequence.QuantumSignalProcessingPhases`` for the common
-    call shape so existing pyqsp code can swap the import. Only the ``Wx``
-    convention is supported (the native convention of this solver). Extra keyword
-    arguments accepted by pyqsp are ignored for compatibility.
+    This is named after ``pyqsp.angle_sequence.QuantumSignalProcessingPhases``
+    for familiarity, but it is **NOT a drop-in replacement** for pyqsp. It
+    returns *this package's* full symmetric phase sequence in the **Wx
+    convention** -- a single numpy ndarray of length ``d + 1``. The phase count
+    and convention differ from pyqsp (which returns a reduced phase list, and
+    whose ``sym_qsp`` path returns a 3-tuple), so the outputs are not
+    interchangeable. Only the ``Wx`` signal operator is supported.
 
-    Note: this returns the symmetric phase sequence in the Wx convention; it is
-    API-compatible, not guaranteed bit-identical to pyqsp's output.
+    Args:
+        poly: a callable, numpy ``Polynomial``/``Chebyshev``, or coefficient
+            sequence. Coefficient inputs default to the Chebyshev basis (pass
+            ``basis="monomial"`` for the power basis).
+        signal_operator: must be ``"Wx"`` (this solver's native convention);
+            anything else raises ``NotImplementedError``.
+        basis: ``"chebyshev"`` (DEFAULT) or ``"monomial"`` for coefficient
+            inputs.
+
+    Returns:
+        numpy ndarray of ``d + 1`` full symmetric phases (Wx convention).
+
+    Raises:
+        NotImplementedError: if ``signal_operator != "Wx"``.
+        RuntimeError: if the solve does not converge (this wrapper discards the
+            full result object, so a silent non-converged return would be
+            unsafe).
     """
     if signal_operator != "Wx":
         raise NotImplementedError(
             f"signal_operator={signal_operator!r} is not supported; only 'Wx'."
         )
-    return np.asarray(poly2angles(poly).phases, dtype=float)
+    result = poly2angles(poly, basis=basis)
+    if not result.converged:
+        raise RuntimeError(
+            "QSP angle solve did not converge "
+            f"(residual = {result.residual:.3g}). The target may be too close "
+            "to |f| = 1, too high-degree, or mis-specified. Use poly2angles() "
+            "to inspect the full AngleResult (phases + residual) instead."
+        )
+    return np.asarray(result.phases, dtype=float)

@@ -1,18 +1,15 @@
 # Build (and optionally publish) wheels for the qsp-angles package.
 #
-# NOTE: this workflow lives inside packages/qsp-angles/ for reference. To make
-# GitHub run it, move it to the repo root .github/workflows/, or split this
-# package into its own repository (recommended once it stabilises).
-name: wheels
+# Lives at the repo root so GitHub actually runs it. Triggered on qsp-angles-v*
+# tags; path-scoped so manual/branch noise from the rest of the monorepo does
+# not spin it up.
+name: qsp-angles wheels
 
 on:
   push:
     tags: ["qsp-angles-v*"]
+    paths: ["packages/qsp-angles/**"]
   workflow_dispatch:
-
-defaults:
-  run:
-    working-directory: packages/qsp-angles
 
 jobs:
   build_wheels:
@@ -42,6 +39,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build sdist
+        working-directory: packages/qsp-angles
         run: pipx run build --sdist
       - uses: actions/upload-artifact@v4
         with:

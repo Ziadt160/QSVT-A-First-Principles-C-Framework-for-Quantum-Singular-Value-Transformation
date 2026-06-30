@@ -7,12 +7,33 @@ set(CMAKE_CXX_EXTENSIONS OFF)
 
 find_package(pybind11 CONFIG REQUIRED)
 
-# Eigen is header-only. Prefer a system install for fast local builds; otherwise
-# fetch it so `pip install .` and cibuildwheel work on any machine with no
-# system Eigen (this is what makes the wheel portable).
+# Eigen is header-only. Prefer a system install for fast/offline local builds;
+# otherwise fetch it so `pip install .` and cibuildwheel work on any machine with
+# no system Eigen (this is what makes the wheel portable).
+#
+# Overrides:
+#   * Set -DFETCHCONTENT_SOURCE_DIR_EIGEN3=/path/to/eigen to use a local Eigen
+#     checkout and skip the network fetch entirely (offline builds).
+#   * A system Eigen found by find_package() is preferred and also skips the
+#     fetch.
+#
+# The FetchContent path requires NETWORK ACCESS (clones Eigen 3.4.0 from GitLab).
 find_package(Eigen3 3.3 NO_MODULE QUIET)
-if(NOT Eigen3_FOUND)
-  message(STATUS "System Eigen3 not found; fetching Eigen 3.4.0 (header-only).")
+if(Eigen3_FOUND)
+  message(STATUS "qsp-angles: using system Eigen3 (no network fetch).")
+else()
+  if(DEFINED FETCHCONTENT_SOURCE_DIR_EIGEN3 AND FETCHCONTENT_SOURCE_DIR_EIGEN3)
+    message(STATUS
+      "qsp-angles: system Eigen3 not found; using local Eigen from "
+      "FETCHCONTENT_SOURCE_DIR_EIGEN3='${FETCHCONTENT_SOURCE_DIR_EIGEN3}' "
+      "(no network fetch).")
+  else()
+    message(STATUS
+      "qsp-angles: system Eigen3 not found; fetching Eigen 3.4.0 (header-only) "
+      "over the network from gitlab.com/libeigen/eigen. This step REQUIRES "
+      "network access. To build offline, install a system Eigen or set "
+      "-DFETCHCONTENT_SOURCE_DIR_EIGEN3=/path/to/eigen.")
+  endif()
   include(FetchContent)
   FetchContent_Declare(
     Eigen3
