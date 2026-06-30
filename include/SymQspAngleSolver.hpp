@@ -18,12 +18,15 @@
 //
 // Compared to the homotopy solver this is strictly faster, converges in ~4-5
 // Newton iterations at any degree, and reaches degree > 1000 at machine
-// precision -- so it is the preferred default. It is, like QspAngleSolver, a
-// self-contained Eigen + STL solver embeddable in a compiled stack.
+// precision -- so it is the preferred default. It is a self-contained,
+// ZERO-dependency core: SymQspAngleSolver.{hpp,cpp} use only the C++ standard
+// library (no linear-algebra or FFT third-party library), so the two files drop
+// straight into any compiled stack with nothing to install.
 
 #include <functional>
+#include <vector>
 
-#include "QspAngleSolver.hpp" // QspSolveResult (shared return type)
+#include "QspResult.hpp" // QspSolveResult (shared return type)
 
 namespace qsvt {
 
@@ -38,9 +41,16 @@ public:
     ///
     /// Returns the full (length d+1) symmetric phases in the Re convention, the
     /// worst-case grid residual max|Re<0|U|0> - f| over [-1, 1] (measured with
-    /// QspAngleSolver::response), iteration count, and converged = residual <
-    /// 1e-6.
+    /// this solver's own self-contained response()), iteration count, and
+    /// converged = residual < 1e-6.
     QspSolveResult solve(const std::function<double(double)>& target) const;
+
+    /// Re<0|U(x, phases)|0> -- the achieved QSP polynomial in the Wx convention.
+    /// A self-contained 2x2 complex matrix product (standard library only, no
+    /// dependency on QspAngleSolver), numerically equivalent to
+    /// QspAngleSolver::response so the phases this solver returns can be graded
+    /// interchangeably.
+    static double response(double x, const std::vector<double>& phases);
 
     int degree() const { return degree_; }
 

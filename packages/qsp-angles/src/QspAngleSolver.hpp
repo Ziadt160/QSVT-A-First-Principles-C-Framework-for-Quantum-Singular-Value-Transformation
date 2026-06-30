@@ -25,14 +25,9 @@
 
 #include <Eigen/Dense>
 
-namespace qsvt {
+#include "QspResult.hpp" // QspSolveResult (shared return type)
 
-struct QspSolveResult {
-    std::vector<double> phases; ///< length d+1
-    double residual{0.0};       ///< max |Re<0|U|0> - f| over a fine grid
-    bool converged{false};
-    int iterations{0};
-};
+namespace qsvt {
 
 class QspAngleSolver {
 public:

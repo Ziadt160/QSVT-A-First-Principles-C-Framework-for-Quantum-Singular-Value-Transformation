@@ -1,8 +1,8 @@
 #pragma once
 // VENDORED from the QSVT_Project root (include/SymQspAngleSolver.hpp).
-// The ONLY change vs the canonical source is the Eigen include path
-// (<eigen3/Eigen/Dense> -> <Eigen/Dense>) so the standalone wheel builds
-// against either a system Eigen or a fetched one. Keep in sync with the root.
+// This file has no third-party-library dependency; it is byte-for-byte
+// identical to the canonical source apart from this vendored comment block.
+// Keep in sync with the root.
 //
 // Symmetric-QSP angle finding via the Dong-Lin-Ni-Wang robust Newton method
 // (arXiv:2307.12468), the algorithm behind pyqsp's `sym_qsp`. Validated against
@@ -23,12 +23,15 @@
 //
 // Compared to the homotopy solver this is strictly faster, converges in ~4-5
 // Newton iterations at any degree, and reaches degree > 1000 at machine
-// precision -- so it is the preferred default. It is, like QspAngleSolver, a
-// self-contained Eigen + STL solver embeddable in a compiled stack.
+// precision -- so it is the preferred default. It is a self-contained,
+// ZERO-dependency core: SymQspAngleSolver.{hpp,cpp} use only the C++ standard
+// library (no linear-algebra or FFT third-party library), so the two files drop
+// straight into any compiled stack with nothing to install.
 
 #include <functional>
+#include <vector>
 
-#include "QspAngleSolver.hpp" // QspSolveResult (shared return type)
+#include "QspResult.hpp" // QspSolveResult (shared return type)
 
 namespace qsvt {
 
@@ -43,9 +46,16 @@ public:
     ///
     /// Returns the full (length d+1) symmetric phases in the Re convention, the
     /// worst-case grid residual max|Re<0|U|0> - f| over [-1, 1] (measured with
-    /// QspAngleSolver::response), iteration count, and converged = residual <
-    /// 1e-6.
+    /// this solver's own self-contained response()), iteration count, and
+    /// converged = residual < 1e-6.
     QspSolveResult solve(const std::function<double(double)>& target) const;
+
+    /// Re<0|U(x, phases)|0> -- the achieved QSP polynomial in the Wx convention.
+    /// A self-contained 2x2 complex matrix product (standard library only, no
+    /// dependency on QspAngleSolver), numerically equivalent to
+    /// QspAngleSolver::response so the phases this solver returns can be graded
+    /// interchangeably.
+    static double response(double x, const std::vector<double>& phases);
 
     int degree() const { return degree_; }
 

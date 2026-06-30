@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Guard against drift between the vendored QSP solver and the repo-root canonical source.
 
-The standalone ``qsp-angles`` package vendors four C++ files:
+The standalone ``qsp-angles`` package vendors five C++ files:
 
+    packages/qsp-angles/src/QspResult.hpp
     packages/qsp-angles/src/QspAngleSolver.hpp
     packages/qsp-angles/src/QspAngleSolver.cpp
     packages/qsp-angles/src/SymQspAngleSolver.hpp
@@ -10,6 +11,7 @@ The standalone ``qsp-angles`` package vendors four C++ files:
 
 These are copies of the repo-root canonical sources:
 
+    include/QspResult.hpp
     include/QspAngleSolver.hpp
     src/QspAngleSolver.cpp
     include/SymQspAngleSolver.hpp
@@ -21,8 +23,10 @@ comparison:
   1. A leading "VENDORED from ..." comment block in each vendored file.
   2. The Eigen include path: ``<eigen3/Eigen/Dense>`` (canonical) vs
      ``<Eigen/Dense>`` (vendored, so the wheel builds against system or fetched
-     Eigen). The ``<unsupported/Eigen/FFT>`` include (used by the sym_qsp solver)
-     is identical in both and needs no rewrite.
+     Eigen). This applies ONLY to the homotopy solver (QspAngleSolver), which
+     still uses Eigen. The symmetric-QSP Newton core (SymQspAngleSolver.{hpp,cpp})
+     and the shared QspResult.hpp are now Eigen-free standard-library-only files,
+     so their vendored copies differ from canonical by the comment block alone.
 
 If the algorithmic bodies diverge in any other way, this script prints a unified
 diff of the *normalized* contents and exits non-zero.
@@ -73,6 +77,18 @@ _VENDORED_COMMENT_MARKERS = (
     "// (<eigen3/Eigen/Dense> -> <Eigen/Dense>). The unsupported FFT include",
     "// (<unsupported/Eigen/FFT>) is unchanged -- it resolves against both a",
     "// system Eigen and a FetchContent Eigen. Keep in sync with the root.",
+    # Marker lines for the dependency-free files: QspResult.hpp and the rewritten
+    # standard-library-only SymQspAngleSolver.{hpp,cpp}. These vendored copies
+    # differ from canonical ONLY by the vendored comment block (there is no Eigen
+    # include to rewrite), so we strip the comment lines and compare the bodies
+    # directly.
+    "// This file has no third-party-library dependency; it is byte-for-byte",
+    "// This file has no third-party-library dependency (the symmetric-QSP Newton",
+    "// core is now a self-contained, standard-library-only implementation); it is",
+    "// byte-for-byte identical to the canonical source apart from this vendored",
+    "// identical to the canonical source apart from this vendored comment block.",
+    "// comment block. Keep in sync with the root.",
+    "// Keep in sync with the root.",
 )
 
 
@@ -164,6 +180,7 @@ def main() -> int:
 
     print(f"check_vendored_sync: repo root = {root}")
     pairs = [
+        (root / "include" / "QspResult.hpp", pkg / "src" / "QspResult.hpp", "QspResult.hpp"),
         (root / "include" / "QspAngleSolver.hpp", pkg / "src" / "QspAngleSolver.hpp", "QspAngleSolver.hpp"),
         (root / "src" / "QspAngleSolver.cpp", pkg / "src" / "QspAngleSolver.cpp", "QspAngleSolver.cpp"),
         (root / "include" / "SymQspAngleSolver.hpp", pkg / "src" / "SymQspAngleSolver.hpp", "SymQspAngleSolver.hpp"),

@@ -9,10 +9,8 @@
 #include <functional>
 #include <vector>
 
-#include "QspAngleSolver.hpp"     // for response() (Wx Re convention)
-#include "SymQspAngleSolver.hpp"
+#include "SymQspAngleSolver.hpp" // solve() and response() (Wx Re convention)
 
-using qsvt::QspAngleSolver;
 using qsvt::QspSolveResult;
 using qsvt::SymQspAngleSolver;
 
@@ -95,7 +93,7 @@ qsp_status qsp_solve_callback(int degree, qsp_target_fn f, void* ctx,
 double qsp_response(double x, const double* phases, int len)
 {
     if (phases == nullptr || len < 1) return 0.0;
-    return QspAngleSolver::response(x, std::vector<double>(phases, phases + len));
+    return SymQspAngleSolver::response(x, std::vector<double>(phases, phases + len));
 }
 
 } // extern "C"
