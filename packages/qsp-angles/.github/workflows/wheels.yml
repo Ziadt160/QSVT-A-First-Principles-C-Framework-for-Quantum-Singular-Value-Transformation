@@ -1,0 +1,63 @@
+# Build (and optionally publish) wheels for the qsp-angles package.
+#
+# NOTE: this workflow lives inside packages/qsp-angles/ for reference. To make
+# GitHub run it, move it to the repo root .github/workflows/, or split this
+# package into its own repository (recommended once it stabilises).
+name: wheels
+
+on:
+  push:
+    tags: ["qsp-angles-v*"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: packages/qsp-angles
+
+jobs:
+  build_wheels:
+    name: wheels on ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.21
+        with:
+          package-dir: packages/qsp-angles
+          output-dir: packages/qsp-angles/wheelhouse
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: wheels-${{ matrix.os }}
+          path: packages/qsp-angles/wheelhouse/*.whl
+
+  build_sdist:
+    name: sdist
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build sdist
+        run: pipx run build --sdist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: packages/qsp-angles/dist/*.tar.gz
+
+  # Publishing is gated behind a tag push + a configured PyPI trusted publisher.
+  # Uncomment and configure the environment/secrets when ready to ship to PyPI.
+  #
+  # publish:
+  #   needs: [build_wheels, build_sdist]
+  #   runs-on: ubuntu-latest
+  #   environment: pypi
+  #   permissions:
+  #     id-token: write   # trusted publishing (no API token needed)
+  #   steps:
+  #     - uses: actions/download-artifact@v4
+  #       with: { path: dist, merge-multiple: true }
+  #     - uses: pypa/gh-action-pypi-publish@release/v1

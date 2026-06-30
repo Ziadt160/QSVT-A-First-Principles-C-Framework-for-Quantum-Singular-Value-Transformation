@@ -1,0 +1,46 @@
+[build-system]
+requires = ["scikit-build-core>=0.8", "pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[project]
+name = "qsp-angles"
+version = "0.1.0"
+description = "Fast C++ QSP/QSVT angle (phase-factor) solver with a pyqsp-compatible API"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "MIT" }
+authors = [{ name = "Ziad Tarek" }]
+keywords = [
+  "quantum",
+  "qsp",
+  "qsvt",
+  "quantum-signal-processing",
+  "phase-factors",
+  "angle-finding",
+]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: C++",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering :: Physics",
+  "Intended Audience :: Science/Research",
+]
+dependencies = ["numpy>=1.20"]
+
+[project.optional-dependencies]
+test = ["pytest>=7"]
+
+[project.urls]
+Homepage = "https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation"
+Source = "https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation"
+
+[tool.scikit-build]
+minimum-version = "0.8"
+cmake.version = ">=3.16"
+wheel.packages = ["qsp_angles"]
+
+[tool.cibuildwheel]
+build = "cp39-* cp310-* cp311-* cp312-*"
+skip = "*-musllinux_* *_i686"
+test-requires = "pytest numpy"
+test-command = "pytest {project}/tests"
