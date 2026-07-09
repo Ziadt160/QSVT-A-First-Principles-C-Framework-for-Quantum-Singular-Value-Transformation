@@ -8,8 +8,10 @@ A from-scratch, **verified** C++ implementation of Quantum Singular Value
 Transformation: it compiles a matrix function `f(A)` into a runnable quantum
 circuit — block-encoding → QSP angle finding → native-gate synthesis → OpenQASM
 and resource estimates — entirely in compiled C++ (Qrack GPU-simulator backend),
-with optional Python bindings. Every component is checked against dense linear
-algebra *and* the Qrack simulator.
+with optional Python bindings. The gate-level decompositions are checked against
+dense linear algebra *and* run on the Qrack simulator; the applications are
+validated at the operator (dense linear-algebra) level — the sparse
+circuit-on-Qrack execution at larger n is the remaining step (see the roadmap).
 
 Results at a glance
 -------------------

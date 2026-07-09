@@ -10,9 +10,10 @@ to one classical pre-computation: given a target polynomial `f(x)`, find the
 phase sequence `Φ` that makes a QSP circuit realise `f`. Established solvers
 (`pyqsp` in Python, `QSPPACK` in MATLAB) are excellent but interpreted — you
 cannot link them into a C++/Rust compiler or simulator without dragging in a
-runtime. **This package is the missing embeddable piece: two C++ files (Eigen +
-STL), callable directly from compiled code.** The pip wheel is a convenience on
-top, not the substrate.
+runtime. **This package is the missing embeddable piece: the default `sym_qsp`
+core is dependency-free C++ (standard library only — a hand-rolled Bluestein FFT,
+no Eigen), callable directly from compiled code.** The pip wheel is a convenience
+on top, not the substrate. (The optional `homotopy` fallback solver uses Eigen.)
 
 The default solver is a faithful C++ port of the **symmetric-QSP Newton method**
 (`sym_qsp`; Dong–Lin–Ni–Wang, arXiv:2307.12468 — the *same* algorithm `pyqsp`
@@ -102,9 +103,10 @@ as a way to swap `qsp-angles` in behind existing pyqsp code unchanged.
 
 `pyqsp` (Python) and `QSPPACK` (MATLAB) are the established angle solvers — both
 are interpreted and not embeddable in a compiled stack. This package is, to our
-knowledge, the **first standalone C++ QSP angle solver**: two C++ files (Eigen +
-STL) with no Python in the loop, so you can call it directly from C++ or any
-compiled/native pipeline, and link it without dragging in a Python runtime. The
+knowledge, the **first standalone C++ QSP angle solver**: the default `sym_qsp`
+core is dependency-free (standard library only, no Eigen) with no Python in the
+loop, so you can call it directly from C++ or any compiled/native pipeline, and
+link it without dragging in a runtime. The
 pip wheel is a thin pybind11 binding for the Python crowd. It is extracted from a
 full from-scratch C++ QSVT framework
 ([repo](https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation)).
