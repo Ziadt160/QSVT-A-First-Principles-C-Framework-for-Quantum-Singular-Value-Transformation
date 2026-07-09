@@ -67,10 +67,36 @@ overlap `|<g|ψ0>|²` must exceed the detection threshold (here o₀ ≈ 4e-2) �
 success-probability limit again; (b) simple thresholding gives `~1/ε` scaling;
 Heisenberg-limited methods (QPE-style) do better and are a natural extension.
 
+## Real molecule — H₂ ground-state energy (done)
+
+[`h2_molecule.py`](h2_molecule.py) runs the whole pipeline on **real chemistry
+data**: the H₂ molecule in the STO-3G basis, reduced to a 2-qubit qubit
+Hamiltonian (O'Malley et al., *Scalable Quantum Simulation of Molecular Energies*,
+PRX 6 031007, 2016 — the first molecule simulated on a quantum computer; R=0.735 Å).
+The electronic coefficients plus the nuclear-repulsion constant give the total
+molecular Hamiltonian — a sum of 5 Pauli terms, exactly the LCU input.
+
+Pipeline: H₂ Hamiltonian → LCU block-encoding → Lin–Tong eigenstate filter
+(sym_qsp angles) → QSVT (qubitization walk operator) → ground state → energy.
+
+**Result (`python h2_molecule.py`):**
+
+| quantity | value |
+|---|---|
+| QSVT-pipeline ground energy | **−1.137306 Ha** |
+| vs exact diagonalization | 0.00000 mHa (pipeline exact) |
+| vs literature FCI (−1.137270) | **0.036 mHa — chemical accuracy** |
+| filter degree / fidelity | 36 / 0.9999999999 |
+| block-encoding | 5 Pauli terms, 3 ancilla, poly(n) gates |
+
+The H₂ **ground-state energy — a real, physical, experimentally-relevant quantity —
+computed end to end through our QSVT pipeline to chemical accuracy.** This is the
+market-facing demonstration: the same machinery that breaks the gate-count wall
+(LCU) and finds the phases fast (sym_qsp) computes a real molecule's energy.
+
 ## Next
 
-- **Wire the pipeline (C++):** LCU block-encode `H` → sym_qsp angles for the
-  sign/eigenstate filter → QSVT → run densely, then on Qrack (where the poly(n)
-  LCU circuit + GPU pay off — the capstone demo).
-- **Resource + accuracy tables** vs (n, gap, ε), and a molecular Hamiltonian
-  (H₂/LiH) alongside the lattice model: the paper/grant figures.
+- **Dissociation curve:** repeat across bond lengths R for the H₂ binding curve
+  (the canonical chemistry figure); add LiH.
+- **Wire the pipeline in C++** and run on Qrack (capstone; the poly(n) LCU circuit
+  + GPU regime), with resource + accuracy tables vs (n, gap, ε) for the paper.
