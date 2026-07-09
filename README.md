@@ -219,32 +219,33 @@ Where QSP is useful (examples)
 - Amplitude amplification and fixed-point amplitude amplification
 - Quantum machine learning primitives that use polynomial approximations to kernels or activation functions
 
-Planned next steps (concrete)
------------------------------
+Status & roadmap
+----------------
 
-DONE: the full QSVT pipeline is implemented (`QsvtPipeline`) and the pieces are
-integrated into a matrix-function compiler with a matrix-inversion example.
-`block(U_Phi) == P(A)` is verified to machine precision and the circuit runs on
-the Qrack simulator.
+The full QSVT pipeline is implemented and verified: `block(U_Phi) == P(A)` to
+machine precision, running on the Qrack simulator. Since the original write-up,
+most of the roadmap is done — see [`packages/qsp-angles`](packages/qsp-angles) and
+[`applications/`](applications):
 
-1. `QspAngleSolver` — largely addressed via homotopy continuation (now solves to
-   machine precision at degree 25+ and near `|f| = 1`; a degree-25 regularized
-   inverse drives the matrix-inversion demo to ~2% on the spectrum). For very
-   high degree / arbitrary precision, the next step is the
-   complementary-polynomial completion + root-finding / Fejer-Riesz method (as
-   in pyqsp), which is non-iterative and machine-precision by construction.
-2. Further reduce CNOT count toward the optimal ~0.48*4^n. Done so far: Mottonen
-   uniformly-controlled rotations (2^k CNOTs) + 4-CNOT 2-qubit base + peephole
-   (~0.58*4^n, 1.4x above optimal). Remaining: the optimal 3-CNOT 2-qubit base
-   (Vatan-Williams Weyl-template fit; ~1.25x) and the Shende-Bullock-Markov
-   cross-level merges.
-3. More QSVT applications on top of the compiler. Done: matrix inversion,
-   Hamiltonian simulation (`e^{-iHt}`), and eigenvalue thresholding / spectral
-   projection (`EigenvalueThreshold`). Next: amplitude amplification, and
-   combining multi-part circuits (e.g. cos/sin of Hamiltonian sim) into a single
-   circuit via LCU (one extra ancilla).
-4. Implement full LCU operator application and controlled-selection primitives
-   (PREPARE/SELECT). General (non-Hermitian) singular-value QSVT (two projectors).
+**Done:**
+1. **Angle finding** — a C++ port of the symmetric-QSP Newton method (`sym_qsp`):
+   machine precision to **degree 1000+**, **~25–70× faster** than pyqsp,
+   cross-validated against it, and extracted as an **embeddable** package. (The
+   Fejér–Riesz direction is no longer needed for this regime.)
+2. **Sparse block-encoding** — full LCU **PREPARE/SELECT** native-gate primitives
+   (`LcuBlockEncoding`), **poly(n)** gates, breaking the dense `~0.58·4ⁿ` wall
+   (~24× fewer CNOTs at n=6 and growing).
+3. **Applications** — quantum linear systems (state **fidelity 1.0**), and
+   ground-state energy on **real data** (H₂ molecule to **chemical accuracy** vs
+   FCI; Fermi–Hubbard material model to sub-μHa). The whole sparse pipeline
+   (LCU → qubitization walk → QSVT with `sym_qsp` angles) is validated end to end.
+
+**Remaining:**
+- Wire `LcuBlockEncoding` into the C++ QSVT run and execute on Qrack at large n
+  (the dense math is already validated); harden the circuit-on-Qrack path.
+- Optimal 3-CNOT 2-qubit base + Shende–Bullock–Markov merges (dense synthesis);
+  T-count resource estimates; amplitude amplification; the H₂ dissociation curve
+  and LiH; general (non-Hermitian) singular-value QSVT (two projectors).
 
 Build and run instructions
 --------------------------
@@ -288,9 +289,14 @@ If tests fail to link with undefined references to Qrack symbols, it means CMake
 Notes and help
 --------------
 
-- The KAK and CS decomposition code lives in `src/` and `include/`. If you are experimenting with decompositions, the KAK implementation is a good place to begin because it focuses on two-qubit canonical decomposition.
-- The `BlockEncoding` class currently contains a simple scalar constructor and some matrix checks; the full multi-qubit block construction (hardware-style) is still under development.
-- If you want me to add reference links (papers, lecture notes) for KAK, CS decomposition, LCU, and QSP I can add a `docs/` section with canonical references (Low & Chuang, Nielsen & Chuang, etc.).
+- The KAK and CS decomposition code lives in `src/` and `include/`. The KAK
+  implementation is a good place to start (two-qubit canonical decomposition).
+- Block-encoding: the dense multi-qubit dilation (`rotationBlockEncoding`,
+  compiled via the Quantum Shannon Decomposition) and the sparse LCU
+  block-encoding (`LcuBlockEncoding`, poly(n) gates) are both implemented and
+  validated. See [`applications/qls`](applications/qls) for the sparse path.
+- Canonical references (QSVT/QSP/block-encoding/LCU/KAK) are listed at the bottom
+  of this README.
 
 Contact / contribution
 ----------------------
@@ -334,6 +340,6 @@ Additional resources and implementations
 --------------------------------------
 
 - QSVT & QSP lecture notes and tutorials by the community (search for "Quantum Signal Processing lecture notes" and "Quantum singular value transformation tutorial"). These are often easier to digest than formal papers when implementing algorithms.
-- Numerical tools for phase/angle finding: several community implementations exist (MATLAB/NumPy/Julia), and you can often find code accompanying papers by Low & Chuang or Gilyén et al.
-
-If you'd like, I can add a `docs/` page with direct links to these papers and short notes about which sections to read first for implementation (e.g., which parts of Gilyén et al. cover block-encoding; which parts of Low & Chuang detail angle synthesis). I can also add citations in BibTeX format if you prefer.
+- Numerical tools for phase/angle finding: `pyqsp` (Python) and `QSPPACK`
+  (MATLAB); this project's `sym_qsp` is a validated, faster, embeddable C++
+  implementation of the same method (see [`packages/qsp-angles`](packages/qsp-angles)).
