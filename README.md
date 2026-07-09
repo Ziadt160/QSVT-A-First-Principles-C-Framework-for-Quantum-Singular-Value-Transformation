@@ -14,19 +14,31 @@ algebra *and* the Qrack simulator.
 Results at a glance
 -------------------
 
-- **Decomposition** (random unitary → native gates), verified vs Qiskit's QSD on
-  identical inputs: reproduces the unitary to ~1e-13; **4 / 28 / 136 / 592 CNOTs**
-  for n = 2..5 (~1.4x Qiskit's optimal QSD), and faster per-call once optimised.
-- **QSP angle solver**: machine precision to **degree 100+** and near `|f| = 1`
-  (homotopy continuation + analytic Jacobian) — degree 101 to ~1e-14 in ~1.7 s.
-- **QSVT applications**, validated against exact linear algebra:
-  - matrix inversion of a kappa~3 Hermitian to ~2% on its spectrum (degree-25 circuit),
-  - Hamiltonian simulation `e^{-iHt}` to ~1e-13 (machine precision),
-  - eigenvalue thresholding / spectral projection to ~5e-3.
-- **Interop**: OpenQASM 2.0 export, CNOT/depth resource estimates, `qsvt_native`
-  Python module (NumPy in/out).
-- **29 GoogleTest cases** (dense + Qrack-simulator), benchmark harness vs
-  Qiskit/PennyLane (`bench/`), CI building Qrack + the project + tests.
+- **Angle finding — [`qsp-angles`](packages/qsp-angles):** a C++ port of the
+  symmetric-QSP Newton method (`sym_qsp`; Dong–Lin–Ni–Wang, arXiv:2307.12468),
+  validated against `pyqsp` to machine precision and **~25–70× faster** running the
+  *same* algorithm — degree **1000+** in ~1 s. Extracted as an **embeddable,
+  zero-dependency** package: `pip install`, plus C ABI, Rust, ctypes, and Qiskit
+  bindings. (A homotopy-continuation solver is kept as a fallback.)
+- **Sparse block-encoding — breaks the `4ⁿ` gate wall:** a native-gate LCU
+  (PREPARE+SELECT) block-encoding of a local Hamiltonian in **poly(n)** gates
+  instead of the dense `~0.58·4ⁿ` — validated exact (`block = A/α` to ~1e-14),
+  ~24× fewer CNOTs at n=6 and growing. This is what makes large n (and the GPU)
+  feasible; see the honest [scaling/GPU analysis](applications/qls/README.md).
+- **Full QSVT pipeline, validated end-to-end** (dense, to ~1e-16): local
+  Hamiltonian → LCU block-encoding → qubitization walk operator → QSVT with
+  `sym_qsp` angles → the target polynomial applied to `A/α`.
+- **Applications on REAL data** ([`applications/`](applications)):
+  - **Quantum linear systems** — solves `A x = b` to state **fidelity 1.0** vs
+    exact (up to 16×16, condition numbers 4–16).
+  - **Ground-state energy** of the **H₂ molecule** (STO-3G; O'Malley et al. 2016)
+    to **chemical accuracy** vs the literature FCI, and the **Fermi–Hubbard**
+    material model to **sub-μHa** across interaction strength — end to end.
+- **Gate synthesis** (random unitary → native gates), verified vs Qiskit's QSD:
+  ~1e-13 reconstruction, **4 / 28 / 136 / 592 CNOTs** for n = 2..5 (~1.4× optimal).
+- **Verification**: GoogleTest suite (dense + Qrack simulator), independent
+  cross-validation vs `pyqsp`, honest reproducible benchmarks (CPU + CUDA GPU),
+  OpenQASM export, and CI.
 
 ```bash
 cmake -S . -B build && cmake --build build -j      # builds (Release by default)
