@@ -107,21 +107,28 @@ Ising chain (`L = 2n−1` terms):
 
 | n | est. CNOTs | **C++ CNOTs** | dense CNOTs | C++ vs dense | block err |
 |--:|--:|--:|--:|--:|--:|
-| 2 | 24  | 60  | 37     | 0.6×  | 2e-15 |
-| 4 | 68  | 272 | 594    | 2.2×  | 8e-15 |
-| 5 | 117 | 522 | 2,376  | 4.6×  | 2e-14 |
-| 6 | 136 | 636 | 9,503  | 14.9× | 2e-14 |
+| 2 | 24  | 42  | 37     | 0.9×  | 2e-15 |
+| 4 | 68  | 172 | 594    | 3.5×  | 6e-15 |
+| 5 | 117 | 324 | 2,376  | 7.3×  | 1e-14 |
+| 6 | 136 | 390 | 9,503  | 24.4× | 1e-14 |
 
 The native-gate block-encoding is **exact** (`block == A/α` to ~1e-14) and **poly(n)**
-(60→636, ~linear vs `4ⁿ`). Honest caveat: the real multi-controlled-Pauli synthesis
-costs ~4–5× the idealized estimate, so it only *beats* the dense path from n≈4 — but
-poly(n) vs `4ⁿ` means the advantage then explodes (14.9× at n=6, ~1000×+ by n=10).
-This is the few-gates / many-qubits regime where the Qrack/CUDA GPU finally wins.
+(42→390, ~linear vs `4ⁿ`). The synthesis was optimized (see below) to ~2–3× the
+idealized estimate; it beats the dense path from n≈4, and poly(n) vs `4ⁿ` means the
+advantage then explodes (24.4× at n=6, ~2000×+ by n=10). This is the
+few-gates / many-qubits regime where the Qrack/CUDA GPU finally wins.
 
 Implemented in [`include/LcuBlockEncoding.hpp`](../../include/LcuBlockEncoding.hpp) /
 [`src/LcuBlockEncoding.cpp`](../../src/LcuBlockEncoding.cpp); validated by
 [`lcu_be_validate.cpp`](lcu_be_validate.cpp): PREPARE (uniformly-controlled Ry
 state-prep) + SELECT (multi-controlled Paulis), all from `{single, CNOT}`.
+
+**Synthesis optimization (~40% CNOT reduction):** the first version rebuilt the
+multi-control Toffoli ladder for every Pauli factor of a term; now a weight-`w`
+term shares ONE AND-ladder across its `w` factors, and a unitary-preserving
+peephole pass cancels the X-mask CNOTs between consecutive terms. Same exact
+block, ~40% fewer CNOTs (n=6: 636 → 390). Further gains available via unary
+iteration (Babbush et al.) — amortizing the SELECT control logic across all terms.
 
 ## Next
 

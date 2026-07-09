@@ -211,6 +211,45 @@ void appendMultiControlledU(std::vector<Gate>& g, const Matrix2cd& U,
     }
 }
 
+// Apply several single-qubit gates Us[j] to targets[j], EACH controlled on ALL
+// `controls` being |1>, but sharing ONE AND-ladder computation: compute the AND
+// of the controls into a work wire once, apply every controlled-U on that wire,
+// then uncompute once. This is the key SELECT optimisation -- a weight-w Pauli
+// term now uses ONE Toffoli ladder instead of w. Work qubits returned to |0>.
+void appendMultiControlledMulti(std::vector<Gate>& g,
+                                const std::vector<Matrix2cd>& Us,
+                                const std::vector<int>& targets,
+                                const std::vector<int>& controls,
+                                const std::vector<int>& work)
+{
+    const int k = static_cast<int>(controls.size());
+    const std::size_t nf = Us.size();
+    if (k == 0) {
+        for (std::size_t j = 0; j < nf; ++j) g.push_back(Gate::single(Us[j], targets[j]));
+        return;
+    }
+    if (k == 1) {
+        for (std::size_t j = 0; j < nf; ++j) appendControlledU(g, Us[j], controls[0], targets[j]);
+        return;
+    }
+    if (static_cast<int>(work.size()) < k - 1) {
+        throw std::logic_error("appendMultiControlledMulti: not enough work qubits");
+    }
+    std::vector<Gate> ladder;
+    appendToffoli(ladder, controls[0], controls[1], work[0]);
+    for (int i = 1; i <= k - 2; ++i) {
+        appendToffoli(ladder, work[i - 1], controls[i + 1], work[i]);
+    }
+    for (const Gate& gg : ladder) g.push_back(gg);
+    const int andWire = work[k - 2];
+    for (std::size_t j = 0; j < nf; ++j) appendControlledU(g, Us[j], andWire, targets[j]);
+    for (auto it = ladder.rbegin(); it != ladder.rend(); ++it) {
+        Gate gg = *it;
+        if (!gg.isCnot) gg.matrix = gg.matrix.adjoint().eval();
+        g.push_back(gg);
+    }
+}
+
 // ---- PREPARE: Mottonen real-amplitude state prep ---------------------------
 //
 // Build a circuit on `m` qubits (logical indices given by `qubits`, qubit
@@ -410,7 +449,6 @@ LcuBlockEncoding::LcuBlockEncoding(const std::vector<PauliTerm>& terms,
         // apply the phase as a controlled global phase (diag(1,1)*phase) on any
         // system qubit -- realised as a controlled-phase gate on the target.
         // Pauli char at string position i acts on system qubit (n_system-1-i).
-        bool phaseFolded = false;
         // First collect non-identity factors.
         std::vector<std::pair<int, char>> factors; // (system qubit, pauli char)
         for (int i = 0; i < n_system_; ++i) {
@@ -431,17 +469,17 @@ LcuBlockEncoding::LcuBlockEncoding(const std::vector<PauliTerm>& terms,
             std::vector<int> controls = ancQ;
             appendMultiControlledU(select, pm, controls, 0, workQ);
         } else {
+            // Build all Pauli factors of this term and apply them sharing ONE
+            // AND-ladder (fold the sign/phase into the first factor).
+            std::vector<Matrix2cd> Us;
+            std::vector<int> targets;
             for (std::size_t fi = 0; fi < factors.size(); ++fi) {
-                const int sysQ = factors[fi].first;
-                const char p = factors[fi].second;
-                Matrix2cd pm = pauliMatrix(p);
-                if (!phaseFolded) {
-                    pm = phase * pm; // fold sign/phase into the first factor
-                    phaseFolded = true;
-                }
-                std::vector<int> controls = ancQ;
-                appendMultiControlledU(select, pm, controls, sysQ, workQ);
+                Matrix2cd pm = pauliMatrix(factors[fi].second);
+                if (fi == 0) pm = phase * pm;
+                Us.push_back(pm);
+                targets.push_back(factors[fi].first);
             }
+            appendMultiControlledMulti(select, Us, targets, ancQ, workQ);
         }
 
         // Undo the X mask.
@@ -473,6 +511,10 @@ LcuBlockEncoding::LcuBlockEncoding(const std::vector<PauliTerm>& terms,
     for (const Gate& gg : prepDag) {
         gates_.push_back(gg);
     }
+
+    // Peephole (unitary-preserving): cancel adjacent CNOTs -- e.g. the X-mask
+    // boundaries between consecutive terms -- and fuse adjacent single-qubit gates.
+    gates_ = optimizeCircuit(gates_);
 }
 
 } // namespace qsvt
