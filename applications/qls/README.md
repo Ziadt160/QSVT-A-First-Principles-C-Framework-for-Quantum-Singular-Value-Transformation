@@ -130,6 +130,28 @@ peephole pass cancels the X-mask CNOTs between consecutive terms. Same exact
 block, ~40% fewer CNOTs (n=6: 636 → 390). Further gains available via unary
 iteration (Babbush et al.) — amortizing the SELECT control logic across all terms.
 
+### Head-to-head vs Qiskit ([`bench_vs_qiskit.py`](bench_vs_qiskit.py))
+
+Qiskit (2.4.2) has no sparse block-encoding primitive, so a Qiskit user
+block-encodes a local Hamiltonian by synthesizing the **dense dilation unitary**
+with `qs_decomposition` (near-optimal generic synthesis, `~0.48·4ⁿ` CNOTs). Our
+LCU is poly(n):
+
+| n (system qubits) | **our LCU** CNOTs | Qiskit dense-dilation CNOTs |
+|--:|--:|--:|
+| 2 | 42  | 19    |
+| 3 | 126 | 95    |
+| 4 | 172 | **423** |
+| 5 | 324 | **1,783** |
+
+Qiskit wins at trivial size; **we pull ahead at n=4 and the gap is unbounded**
+(poly(n) vs `4ⁿ` — ~thousands× by n=10). Honest caveats: (a) the two are
+*different* block-encodings — ours carries an `α` subnormalization and a
+`⌈log L⌉`-qubit ancilla; the gate-cost *scaling* is the point; (b) for a **generic**
+(non-sparse) unitary, Qiskit's QSD is **~1.4× better** than our from-scratch
+synthesizer (n=5: 423 vs 592) — Qiskit leads there, and we say so. The win is
+specifically on *structured / local* operators, which is what QSVT actually consumes.
+
 ## Sparse QSVT pipeline — dense end-to-end validation (done)
 
 [`lcu_qsvt_dense.py`](lcu_qsvt_dense.py) proves the *whole sparse pipeline* connects,
