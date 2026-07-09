@@ -94,6 +94,31 @@ computed end to end through our QSVT pipeline to chemical accuracy.** This is th
 market-facing demonstration: the same machinery that breaks the gate-count wall
 (LCU) and finds the phases fast (sym_qsp) computes a real molecule's energy.
 
+## Real material — Fermi–Hubbard model (done)
+
+[`fermi_hubbard.py`](fermi_hubbard.py) shows the pipeline generalizes beyond
+chemistry to **condensed matter**: the 2-site Fermi–Hubbard model — the canonical
+model of strongly-correlated electrons (Mott insulators, high-Tc superconductivity)
+— at half filling (a number-penalty pins the filling), across interaction strength
+`U/t`. It's exactly solvable (`E₀ = (U − √(U²+16t²))/2`), so it's **self-validating**.
+
+**Result (`python fermi_hubbard.py`):**
+
+| U/t | analytic E₀ | QSVT pipeline | error | filter degree |
+|--:|--:|--:|--:|--:|
+| 0 | −2.0000 | −1.999999 | 0.0009 mHa | 50 |
+| 2 | −1.2361 | −1.236067 | 0.0010 mHa | 102 |
+| 4 | −0.8284 | −0.828426 | 0.0009 mHa | 194 |
+| 6 | −0.6056 | −0.605550 | 0.0008 mHa | 324 |
+
+Sub-μHa agreement with both the analytic value and exact diagonalization. And the
+**filter degree grows with `U` (50→324)** — real physics: stronger correlation →
+smaller Mott gap (~4t²/U) → higher degree ~1/gap. So the demo also exhibits the
+honest resource–difficulty relationship (strongly-correlated systems cost more).
+
+Two real systems — a molecule (H₂) and a material model (Hubbard) — both computed
+end to end through the same validated pipeline.
+
 ## Next
 
 - **Dissociation curve:** repeat across bond lengths R for the H₂ binding curve
