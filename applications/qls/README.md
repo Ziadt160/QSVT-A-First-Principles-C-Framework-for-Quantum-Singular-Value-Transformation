@@ -130,12 +130,24 @@ peephole pass cancels the X-mask CNOTs between consecutive terms. Same exact
 block, ~40% fewer CNOTs (n=6: 636 → 390). Further gains available via unary
 iteration (Babbush et al.) — amortizing the SELECT control logic across all terms.
 
+## Sparse QSVT pipeline — dense end-to-end validation (done)
+
+[`lcu_qsvt_dense.py`](lcu_qsvt_dense.py) proves the *whole sparse pipeline* connects,
+densely: a local Hamiltonian `A = Σ c_k P_k` → LCU block-encoding `U` → QSVT with
+this project's sym_qsp angles → the target polynomial applied to `A/α`.
+
+Key fact used: for Hermitian `A` (real coeffs) the LCU `U = PREP† SELECT PREP` is
+**Hermitian and `U² = I`** — a reflection. The qubitization **walk operator**
+`W = U·(2Π−I)` then has a genuine rotation action, so the standard QSVT sequence
+`R(φ₀)·Π_k[W·R(φ_k)]` with the Wx-convention sym_qsp phases applies the polynomial.
+Verified: `Re(block) = 0.7·T₃(A/α)` to **5.4e-16**. This is the integration all the
+pieces (LCU + sym_qsp + QSVT) were built for — it unblocks the C++/Qrack capstone.
+
 ## Next
 
-- **Phase 2 (C++):** ✅ native-gate `LcuBlockEncoding` done & validated. Next:
-  reduce the multi-controlled-gate constant (v-chain / borrowed ancilla), wire it
-  into `QsvtPipeline` as an alternative to the dense block-encoding, and run on
-  Qrack at n ≫ 6 (where dense dies and the GPU helps).
+- **Phase 2 (C++) capstone:** wire `LcuBlockEncoding` + the walk operator + sym_qsp
+  angles into a QSVT run (dense math now validated above), then run on **Qrack** at
+  n ≫ 6 — where the poly(n) LCU circuit + the GPU finally pay off together.
 - **W2b:** harden the QSVT circuit-on-Qrack path (fix the n ≥ 2 segfault).
 - **W3/W4:** T-count estimate, full sweeps + the degree-vs-κ and cost curves for
   the paper. See the [scope doc](../../docs/phase1-qls-scope.md).
