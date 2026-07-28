@@ -1,0 +1,63 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite it as below."
+title: "QSVT: A First-Principles C++ Framework for Quantum Singular Value Transformation"
+abstract: >-
+  A from-scratch C++ implementation of Quantum Singular Value Transformation
+  that compiles a matrix function f(A) into a runnable quantum circuit. It
+  includes an embeddable, dependency-free QSP phase-angle solver — the
+  symmetric-QSP Newton method plus an inverse nonlinear Fourier transform, with
+  the crossover between them measured rather than assumed — a QSP target
+  compiler that returns validated angles or an actionable reason none exist,
+  LCU block encoding with native-gate synthesis, and OpenQASM export. The core
+  is stdlib-only C++17, verified in CI by compiling it with no include paths at
+  all and linking it from pure C.
+type: software
+authors:
+  # NOTE: check this splits your name the way you want to be cited. Everything
+  # downstream (Zenodo, Google Scholar, reference lists) keys off it, and an
+  # inconsistent split fragments your citation record across two identities.
+  - family-names: "Mohammed"
+    given-names: "Ziad Tarek"
+    # orcid: "https://orcid.org/0000-0000-0000-0000"   # add once you register
+repository-code: "https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation"
+license: MIT
+version: "0.1.0"
+date-released: "2026-07-28"
+keywords:
+  - quantum computing
+  - quantum singular value transformation
+  - quantum signal processing
+  - phase factors
+  - angle finding
+  - block encoding
+  - quantum linear systems
+  - "C++"
+references:
+  - type: article
+    title: "Robust iterative method for symmetric quantum signal processing in all parameter regimes"
+    authors:
+      - family-names: "Dong"
+        given-names: "Yulong"
+      - family-names: "Lin"
+        given-names: "Lin"
+      - family-names: "Ni"
+        given-names: "Hongkang"
+      - family-names: "Wang"
+        given-names: "Jiasu"
+    year: 2023
+    identifiers:
+      - type: other
+        value: "arXiv:2307.12468"
+    notes: "The symmetric-QSP Newton method implemented as the default solver."
+  - type: article
+    title: "Fast phase factor finding for quantum signal processing"
+    authors:
+      - family-names: "Ni"
+        given-names: "Hongkang"
+      - family-names: "Ying"
+        given-names: "Lexing"
+    year: 2024
+    identifiers:
+      - type: other
+        value: "arXiv:2410.06409"
+    notes: "The Weiss completion / Half-Cholesky inverse NLFT approach implemented as the second solver."

@@ -435,3 +435,23 @@ Additional resources and implementations
 - Numerical tools for phase/angle finding: `pyqsp` (Python) and `QSPPACK`
   (MATLAB); this project's `sym_qsp` is a validated, faster, embeddable C++
   implementation of the same method (see [`packages/qsp-angles`](packages/qsp-angles)).
+
+Citing this work
+----------------
+
+If you use this in academic work, please cite it. Machine-readable metadata lives
+in [CITATION.cff](CITATION.cff) — GitHub renders a "Cite this repository" button
+from it, and Zenodo reads it when minting a DOI for a release.
+
+<!-- Once the first GitHub release is archived by Zenodo, paste the CONCEPT DOI
+     (the version-independent one, which always resolves to the newest release)
+     here and as a badge at the top of this file. -->
+
+    Mohammed, Z. T. (2026). QSVT: A First-Principles C++ Framework for Quantum
+    Singular Value Transformation (Version 0.1.0) [Computer software].
+    https://github.com/Ziadt160/QSVT-A-First-Principles-C-Framework-for-Quantum-Singular-Value-Transformation
+
+The two solver algorithms are due to their original authors; if you use them,
+please cite those papers too — Dong, Lin, Ni & Wang (arXiv:2307.12468) for the
+symmetric-QSP Newton method, and Ni & Ying (arXiv:2410.06409) for the
+inverse-NLFT approach. Both are listed in `CITATION.cff`.
