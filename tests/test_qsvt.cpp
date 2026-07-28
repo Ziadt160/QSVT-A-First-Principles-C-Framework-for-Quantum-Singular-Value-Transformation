@@ -1,3 +1,4 @@
+#include <cmath>
 #include <complex>
 #include <cstdio>
 #include <sstream>
@@ -14,11 +15,14 @@
 #include "KAKDecomposition.hpp"
 #include "EigenvalueThreshold.hpp"
 #include "HamiltonianSimulation.hpp"
+#include "InverseApproximation.hpp"
 #include "Lcu.hpp"
+#include "LcuBlockEncoding.hpp"
 #include "Qsp.hpp"
 #include "QspAngleSolver.hpp"
 #include "Qsvt.hpp"
 #include "QsvtPipeline.hpp"
+#include "SymQspAngleSolver.hpp"
 #include "ShannonDecomposition.hpp"
 #include "TwoQubitSynthesis.hpp"
 
@@ -675,4 +679,206 @@ TEST(QrackMeasure, MeasureReturnsCorrectResult) {
     QInterfacePtr qReg = CreateQuantumInterface(QINTERFACE_OPTIMAL, 2, ZERO_BCI);
     qReg->X(0);
     EXPECT_TRUE(qReg->M(0));
+}
+
+// ---------------------------------------------------------------------------
+// Headline components: the symmetric-QSP Newton solver, the native-gate LCU
+// block-encoding, and the QSP target construction. These carry the project's
+// main claims and previously had no ctest coverage at all.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+// Kronecker product of single-qubit Paulis for a string like "IXZI"
+// (first character = most-significant system qubit).
+qsvt::Matrix pauliStringMatrix(const std::string& s)
+{
+    Eigen::Matrix2cd I2, X, Y, Z;
+    I2 << 1, 0, 0, 1;
+    X << 0, 1, 1, 0;
+    Y << qsvt::Complex(0, 0), qsvt::Complex(0, -1), qsvt::Complex(0, 1),
+        qsvt::Complex(0, 0);
+    Z << 1, 0, 0, -1;
+    qsvt::Matrix acc = qsvt::Matrix::Identity(1, 1);
+    for (char ch : s) {
+        Eigen::Matrix2cd p = I2;
+        if (ch == 'X') p = X;
+        else if (ch == 'Y') p = Y;
+        else if (ch == 'Z') p = Z;
+        acc = Eigen::kroneckerProduct(acc, p).eval();
+    }
+    return acc;
+}
+
+} // namespace
+
+// --- SymQspAngleSolver -----------------------------------------------------
+
+TEST(SymQspAngleSolver, MatchesExactChebyshevTarget)
+{
+    // f(x) = 0.4 T_1 + 0.5 T_3, an odd degree-3 polynomial with |f| <= 1.
+    auto target = [](double x) { return 0.4 * x + 0.5 * (4.0 * x * x * x - 3.0 * x); };
+    const qsvt::QspSolveResult r = qsvt::SymQspAngleSolver(3).solve(target);
+    EXPECT_TRUE(r.converged);
+    EXPECT_LT(r.residual, 1e-10);
+    EXPECT_EQ(r.phases.size(), 4u);
+    for (double x : {-0.9, -0.4, 0.0, 0.3, 0.85}) {
+        EXPECT_NEAR(qsvt::SymQspAngleSolver::response(x, r.phases), target(x), 1e-9);
+    }
+}
+
+TEST(SymQspAngleSolver, AgreesWithHomotopySolverOnSharedTarget)
+{
+    // Both solvers return phases in the same Re<0|U|0> convention, so their
+    // realised polynomials must agree even though the algorithms differ.
+    auto target = [](double x) { return 0.6 * x; };
+    const qsvt::QspSolveResult sym = qsvt::SymQspAngleSolver(1).solve(target);
+    const qsvt::QspSolveResult hom = qsvt::QspAngleSolver(1).solve(target);
+    ASSERT_TRUE(sym.converged);
+    ASSERT_TRUE(hom.converged);
+    for (double x : {-0.8, -0.2, 0.5, 0.95}) {
+        EXPECT_NEAR(qsvt::SymQspAngleSolver::response(x, sym.phases),
+                    qsvt::SymQspAngleSolver::response(x, hom.phases), 1e-8);
+    }
+}
+
+TEST(SymQspAngleSolver, ReachesHighDegreeAtMachinePrecision)
+{
+    // The degree regime the project's claims rest on: matrix inversion at
+    // moderate kappa needs degrees in the tens-to-hundreds.
+    const qsvt::InverseApprox inv = qsvt::approximateInverse(10.0, 79);
+    const qsvt::QspSolveResult r =
+        qsvt::SymQspAngleSolver(79).solve([&inv](double x) { return 0.999 * inv(x); });
+    EXPECT_TRUE(r.converged);
+    EXPECT_LT(r.residual, 1e-9);
+    EXPECT_EQ(r.phases.size(), 80u);
+}
+
+TEST(SymQspAngleSolver, ReportsFailureOnNonFiniteTarget)
+{
+    // Regression: the residual scan used std::max(worst, err), and
+    // std::max(a, NaN) returns a -- so a diverged solve silently reported
+    // residual 0 with converged = true.
+    auto bad = [](double) { return std::nan(""); };
+    const qsvt::QspSolveResult r = qsvt::SymQspAngleSolver(3).solve(bad);
+    EXPECT_FALSE(r.converged);
+    EXPECT_TRUE(std::isnan(r.residual));
+}
+
+// --- LcuBlockEncoding ------------------------------------------------------
+
+TEST(LcuBlockEncoding, BlockEqualsAOverAlpha)
+{
+    for (int n : {2, 3}) {
+        std::string zi(n, 'I'), xx(n, 'I'), iz(n, 'I');
+        zi[0] = 'Z';
+        xx[0] = 'X';
+        xx[1] = 'X';
+        iz[n - 1] = 'Z';
+        const std::vector<qsvt::PauliTerm> terms{
+            {qsvt::Complex(0.5, 0.0), xx},
+            {qsvt::Complex(0.3, 0.0), zi},
+            {qsvt::Complex(0.2, 0.0), iz},
+        };
+
+        const qsvt::LcuBlockEncoding be(terms, n);
+        const int m = be.numAncilla();
+        const int totalQubits = n + m + ((m >= 2) ? (m - 1) : 0);
+
+        double expectAlpha = 0.0;
+        for (const auto& t : terms) expectAlpha += std::abs(t.coeff);
+        EXPECT_NEAR(be.alpha(), expectAlpha, 1e-12) << "n = " << n;
+
+        const Eigen::Index dim = Eigen::Index(1) << n;
+        qsvt::Matrix A = qsvt::Matrix::Zero(dim, dim);
+        for (const auto& t : terms) A += t.coeff * pauliStringMatrix(t.pauli);
+        const qsvt::Matrix target = A / be.alpha();
+
+        const qsvt::Matrix U = qsvt::denseCircuit(be.gates(), totalQubits);
+        const qsvt::Matrix block = U.topLeftCorner(dim, dim);
+        EXPECT_LT((block - target).norm() / target.norm(), 1e-10) << "n = " << n;
+    }
+}
+
+TEST(LcuBlockEncoding, EmitsWellFormedNativeGates)
+{
+    const std::vector<qsvt::PauliTerm> terms{{qsvt::Complex(0.7, 0.0), "XZ"},
+                                             {qsvt::Complex(0.3, 0.0), "IZ"}};
+    const qsvt::LcuBlockEncoding be(terms, 2);
+    const int m = be.numAncilla();
+    const int totalQubits = be.numSystem() + m + ((m >= 2) ? (m - 1) : 0);
+    ASSERT_FALSE(be.gates().empty());
+
+    for (const qsvt::Gate& g : be.gates()) {
+        EXPECT_GE(g.target, 0);
+        EXPECT_LT(g.target, totalQubits);
+        if (g.isCnot) {
+            EXPECT_GE(g.control, 0);
+            EXPECT_LT(g.control, totalQubits);
+            EXPECT_NE(g.control, g.target);
+        } else {
+            // Single-qubit gates must be unitary.
+            const Eigen::Matrix2cd d =
+                g.matrix * g.matrix.adjoint() - Eigen::Matrix2cd::Identity();
+            EXPECT_LT(d.norm(), 1e-12);
+        }
+    }
+}
+
+// --- QSP target construction ----------------------------------------------
+
+TEST(InverseApproximation, IsAValidQspTargetAndTracksOneOverX)
+{
+    const double kappa = 10.0;
+    const int degree = 79;
+    const qsvt::InverseApprox inv = qsvt::approximateInverse(kappa, degree);
+
+    // |p| <= 1 on [-1, 1] is the QSP validity condition. Measure on an
+    // endpoint-clustered grid: a uniform grid steps over the endpoint spikes.
+    double sup = 0.0;
+    const int m = 8 * degree + 2;
+    for (int j = 0; j < m; ++j) {
+        const double x = std::cos(3.14159265358979323846 * j / (m - 1));
+        sup = std::max(sup, std::abs(inv(x)));
+    }
+    EXPECT_LE(sup, 1.0 + 1e-12);
+
+    // p(x) ~ c/x on the domain [1/kappa, 1].
+    EXPECT_GT(inv.c, 0.0);
+    EXPECT_LT(inv.relErr, 1e-3);
+    for (double x : {0.15, 0.3, 0.6, 1.0}) {
+        EXPECT_NEAR(inv(x), inv.c / x, 5e-3 * std::abs(inv.c / x));
+    }
+}
+
+TEST(InverseApproximation, MinDegreeGrowsWithAccuracy)
+{
+    const int loose = qsvt::minInverseDegree(10.0, 1e-2);
+    const int tight = qsvt::minInverseDegree(10.0, 1e-4);
+    EXPECT_GT(loose, 0);
+    EXPECT_GT(tight, loose);
+    EXPECT_EQ(tight % 2, 1); // p is odd
+}
+
+TEST(InverseApproximation, SafetyScaleTamesErfOvershoot)
+{
+    // erf -> +-1 asymptotically, so its degree-d Chebyshev truncation overshoots
+    // |p| = 1 (sup ~ 1.021 at w = 0.1, d = 25) and has no symmetric-QSP
+    // solution at all. The shave makes the target attainable.
+    auto erfTarget = [](double x) { return std::erf(x / 0.1); };
+    const double scale = qsvt::chebyshevSafetyScale(erfTarget, 25);
+    EXPECT_GT(scale, 0.0);
+    EXPECT_LT(scale, 0.999); // strictly shaved, not merely the default safety
+
+    const qsvt::QspSolveResult bad = qsvt::SymQspAngleSolver(25).solve(erfTarget);
+    const qsvt::QspSolveResult good = qsvt::SymQspAngleSolver(25).solve(
+        [&erfTarget, scale](double x) { return scale * erfTarget(x); });
+
+    // Neither reports `converged`: at degree 25 a steep erf cannot be matched to
+    // the 1e-6 convergence bar by ANY polynomial -- that bar is set by Chebyshev
+    // truncation error, not by the solver. What the shave buys is a target that
+    // is attainable at all, which is worth well over an order of magnitude.
+    EXPECT_TRUE(std::isfinite(good.residual));
+    EXPECT_LT(good.residual, 5e-2);
+    EXPECT_GT(bad.residual, 10.0 * good.residual);
 }

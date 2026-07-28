@@ -3,8 +3,8 @@
 #include <cmath>
 #include <complex>
 
-#include "QspAngleSolver.hpp"
 #include "QsvtPipeline.hpp"
+#include "SymQspAngleSolver.hpp"
 
 namespace qsvt {
 
@@ -17,9 +17,9 @@ HamSimProgram compileHamiltonianSimulation(const Matrix& H, double t, int degree
     const int sinDeg = (degree % 2 == 1) ? degree : degree - 1;
 
     const QspSolveResult cs =
-        QspAngleSolver(cosDeg).solve([t](double x) { return std::cos(t * x); });
+        SymQspAngleSolver(cosDeg).solve([t](double x) { return std::cos(t * x); });
     const QspSolveResult ss =
-        QspAngleSolver(sinDeg).solve([t](double x) { return std::sin(t * x); });
+        SymQspAngleSolver(sinDeg).solve([t](double x) { return std::sin(t * x); });
 
     p.cosPhases = cs.phases;
     p.sinPhases = ss.phases;

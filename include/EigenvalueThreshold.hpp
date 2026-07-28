@@ -24,6 +24,12 @@ struct ThresholdProgram {
     double fitResidual{0.0};
     bool converged{false};
     double mu{0.0}; // threshold
+    /// Subnormalization applied to the erf target so its degree-`degree`
+    /// Chebyshev truncation satisfies |p| <= 1 (the QSP validity condition).
+    /// erf approaches +-1 asymptotically, so its truncation always overshoots
+    /// slightly and a shave is mandatory. QSVT therefore realises
+    /// targetScale * sign(H - mu); `spectralProjector` divides it back out.
+    double targetScale{1.0};
 };
 
 /// Compile the QSVT circuit applying sign(H - mu) (smoothed over width `w`).

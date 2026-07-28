@@ -9,7 +9,9 @@
 #include "EigenvalueThreshold.hpp"
 #include "HamiltonianSimulation.hpp"
 #include "KAKDecomposition.hpp"
+#include "InverseApproximation.hpp"
 #include "QspAngleSolver.hpp"
+#include "SymQspAngleSolver.hpp"
 #include "Qsvt.hpp"
 #include "QsvtPipeline.hpp"
 #include "ShannonDecomposition.hpp"
@@ -86,13 +88,16 @@ int main()
     for (Eigen::Index i = 0; i < k; ++i) ev(i) = delta + (1.0 - delta) * i / (k - 1);
     const qsvt::Matrix Amat = W * ev.cast<qsvt::Complex>().asDiagonal() * W.adjoint();
 
-    // Regularized inverse f(x) = c * x / (x^2 + eps): smooth, odd, ~ c/x away
-    // from 0 (the standard QSVT inversion target). c is kept well inside [-1,1]
-    // (peak ~0.4) so our Levenberg-Marquardt angle solver converges.
-    const double eps = (delta / 4.0) * (delta / 4.0); // small -> tracks 1/x on [delta,1]
-    const double c = 0.9 * 2.0 * std::sqrt(eps); // peak |f| = 0.9 (in solver range)
-    auto invTarget = [&](double x) { return c * x / (x * x + eps); };
-    const int invDegree = 25; // homotopy solver reaches this comfortably
+    // Inversion target: a near-minimax ODD POLYNOMIAL approximating c/x on the
+    // spectrum's domain [delta, 1] (and its reflection), normalized to |p| <= 1.
+    // Note this is a polynomial, not a smoothed rational such as c*x/(x^2+eps):
+    // a rational target is graded across all of [-1, 1] including the sharp
+    // feature at x = 0, which no moderate-degree polynomial can match, producing
+    // a large "fit residual" that is really a target-construction artefact.
+    const int invDegree = qsvt::minInverseDegree(1.0 / delta, 1e-3);
+    const qsvt::InverseApprox inv = qsvt::approximateInverse(1.0 / delta, invDegree);
+    const double c = inv.c;
+    auto invTarget = [&](double x) { return 0.999 * inv(x); }; // shave below |p|=1
     const qsvt::QsvtProgram prog = qsvt::compileMatrixFunction(Amat, invTarget, invDegree);
 
     std::cout << "\n--- Matrix-function compiler: inversion of a " << k << "x" << k

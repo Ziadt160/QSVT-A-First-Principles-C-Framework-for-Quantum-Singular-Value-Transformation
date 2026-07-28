@@ -1,6 +1,7 @@
-# Ignore build directory
+# Ignore build directories
 /build/
 build/
+build_qrack/
 
 # Ignore Google Test repo(s)
 /gtest/

@@ -1,0 +1,85 @@
+# CI for the standalone qsp-angles package (packages/qsp-angles).
+#
+# Path-scoped so it only runs when the package changes. GitHub-hosted ubuntu
+# runners ship Python headers, so the pybind11 wheel builds here (unlike the
+# WSL dev box, which lacks python3-dev).
+name: qsp-angles CI
+
+on:
+  push:
+    paths: ["packages/qsp-angles/**"]
+  pull_request:
+    paths: ["packages/qsp-angles/**"]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: build + test (ubuntu-latest)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps (C++ toolchain, CMake, Eigen)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libeigen3-dev
+
+      - name: Install package with test extras
+        run: pip install ./packages/qsp-angles[test]
+
+      - name: Run Python tests
+        run: pytest packages/qsp-angles/tests
+
+      - name: Check vendored sources are in sync with repo root
+        run: python packages/qsp-angles/scripts/check_vendored_sync.py
+
+      - name: Compile and run C++ smoke test
+        run: |
+          g++ -O3 -std=c++17 -Wall -Wextra \
+            -I/usr/include/eigen3 \
+            -I packages/qsp-angles/src \
+            packages/qsp-angles/tests/smoke.cpp \
+            packages/qsp-angles/src/QspAngleSolver.cpp \
+            packages/qsp-angles/src/SymQspAngleSolver.cpp \
+            -o qsp_smoke
+          ./qsp_smoke
+
+      - name: Independent cross-validation vs pyqsp
+        run: |
+          pip install pyqsp
+          g++ -O3 -march=native -DNDEBUG -std=c++17 \
+            -I/usr/include/eigen3 \
+            -I packages/qsp-angles/src \
+            packages/qsp-angles/bench/validate.cpp \
+            packages/qsp-angles/src/SymQspAngleSolver.cpp \
+            packages/qsp-angles/src/QspAngleSolver.cpp \
+            -o qsp_validate
+          OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
+            python packages/qsp-angles/bench/validate_vs_pyqsp.py \
+              --manifest cases.txt --cpp-bin ./qsp_validate
+
+      - name: Build + run the C ABI example (pure-C client links the C++ solver)
+        run: |
+          cd packages/qsp-angles/capi
+          g++ -O3 -std=c++17 -Wall -Wextra -I../src -I/usr/include/eigen3 -c \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp
+          ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o
+          gcc -O2 -Wall -Wextra -std=c11 example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c
+          ./example_c
+
+      - name: Python-via-ctypes example (C ABI, no pybind)
+        run: |
+          cd packages/qsp-angles/capi
+          g++ -O3 -fPIC -shared -std=c++17 -I../src -I/usr/include/eigen3 \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp \
+            -o libqsp_angles_c.so
+          python example_ctypes.py ./libqsp_angles_c.so
+
+      - name: Build + run the Rust crate example (links the C ABI)
+        run: |
+          cd packages/qsp-angles/rust
+          cargo run --quiet --example solve

@@ -6,7 +6,7 @@
 
 #include <eigen3/Eigen/Eigenvalues>
 
-#include "QspAngleSolver.hpp"
+#include "SymQspAngleSolver.hpp"
 #include "ShannonDecomposition.hpp"
 
 namespace qsvt {
@@ -103,7 +103,7 @@ QsvtProgram compileMatrixFunction(const Matrix& A,
                                   int degree)
 {
     QsvtProgram p;
-    const QspSolveResult sol = QspAngleSolver(degree).solve(target);
+    const QspSolveResult sol = SymQspAngleSolver(degree).solve(target);
     p.phases = sol.phases;
     p.polyResidual = sol.residual;
     p.converged = sol.converged;
