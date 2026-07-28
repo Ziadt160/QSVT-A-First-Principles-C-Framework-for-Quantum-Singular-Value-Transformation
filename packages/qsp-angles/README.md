@@ -154,41 +154,61 @@ provenance — absolute numbers are hardware-dependent):
 ## Building from source
 
 ```bash
-pip install .            # needs a C++17 compiler; Eigen is auto-fetched if absent
+pip install .            # needs only a C++17 compiler
 pip install -e .[test]   # editable + test deps
 pytest tests
 ```
 
-The wheel vendors only four C++ files
-(`src/QspAngleSolver.{hpp,cpp}` and `src/SymQspAngleSolver.{hpp,cpp}`) plus a thin
-pybind11 layer. No Qrack, no CUDA, no system Eigen required. (`sym_qsp`
-  (The sym_qsp core is Eigen-free: verified by compiling it in an empty directory with no -I flags.)
+**The default build has no third-party C++ dependency**: no Eigen, no
+`find_package`, no `FetchContent`, no network. It builds offline on a bare
+machine with nothing but a compiler. The wheel vendors a handful of C++ files
+plus a thin pybind11 layer — no Qrack, no CUDA.
 
-### Eigen dependency (network requirement / override)
+This is enforced, not asserted. The `abi-no-third-party-deps` CI job copies the
+solver and the C ABI into an empty directory, compiles them with **no `-I` flags
+at all** under `-Werror`, and links the result from pure C. The reachable include
+set is six standard headers (`<algorithm> <array> <cmath> <complex> <functional>
+<vector>`) and nothing else.
 
-Eigen is header-only. The build prefers a **system Eigen** if `find_package`
-locates one (fast, offline). Otherwise CMake **fetches Eigen 3.4.0 over the
-network** via `FetchContent` from `https://gitlab.com/libeigen/eigen.git` —
-which means an isolated/offline build with no system Eigen will fail at
-configure time. The configure step prints a clear status line saying whether it
-found a system Eigen or is fetching.
+### Optional: the homotopy fallback (the only Eigen user)
 
-To build offline (or to pin a local checkout), point CMake at an Eigen source
-tree and it will skip the network fetch:
+`method="homotopy"` is a second, older solver kept as a fallback. It is the one
+piece that needs Eigen, so it is **off by default** — enabling it is what pulls
+in the dependency, and with it the network fetch:
 
 ```bash
-# Use a local Eigen checkout instead of fetching:
-pip install . --config-settings=cmake.define.FETCHCONTENT_SOURCE_DIR_EIGEN3=/path/to/eigen
-
-# Or rely on a system install (e.g. apt install libeigen3-dev) — auto-detected.
+pip install -C cmake.define.QSP_ANGLES_WITH_HOMOTOPY=ON .
 ```
+
+With it on, a system Eigen is preferred (`apt install libeigen3-dev`); failing
+that CMake fetches Eigen 3.4.0 from `gitlab.com/libeigen/eigen`, which requires
+network access. To stay offline, point it at a local checkout:
+
+```bash
+pip install . \
+  -C cmake.define.QSP_ANGLES_WITH_HOMOTOPY=ON \
+  -C cmake.define.FETCHCONTENT_SOURCE_DIR_EIGEN3=/path/to/eigen
+```
+
+Check what you have with `qsp_angles.HAS_HOMOTOPY`; asking for a solver the build
+lacks raises a `ValueError` naming the flag. The default `sym_qsp` is both faster
+and higher-degree, so leaving this off costs nothing in normal use.
 
 ### CI and wheels
 
 - Continuous integration lives at the repo root:
-  `.github/workflows/qsp-angles-ci.yml` (path-scoped to `packages/qsp-angles/**`)
-  builds + tests the package, runs the C++ smoke test, and checks the vendored
-  sources are in sync with the repo root.
+  `.github/workflows/qsp-angles-ci.yml` (path-scoped to `packages/qsp-angles/**`),
+  in three jobs:
+  - **`test`** — the default build, on a runner with **no Eigen installed**
+    (it asserts `/usr/include/eigen3` is absent first). Runs the Python tests,
+    the stdlib-only C++ smoke test, cross-validation against `pyqsp`, the pure-C
+    ABI client, the ctypes client, the Rust example, and the vendored-source
+    sync check. If a third-party dependency ever creeps back into the core,
+    this job goes red.
+  - **`abi-no-third-party-deps`** — compiles the C ABI in an empty directory
+    with no `-I` flags at all under `-Werror`, then links it from pure C.
+  - **`homotopy-optional`** — the opt-in Eigen path, which also asserts the two
+    `response` implementations agree bit-for-bit.
 - Wheels are built by the repo-root workflow
   `.github/workflows/qsp-angles-wheels.yml` (triggered on `qsp-angles-v*` tags).
 

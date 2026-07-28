@@ -15,8 +15,10 @@ QSP angle solver written in a compiled language that is usable today.** Every
 actively maintained alternative — `pyqsp`, `QSPPACK`, `nlft-qsp`, PennyLane — is
 Python or MATLAB. The one other compiled implementation, Microsoft's F# port, has
 been archived since January 2024 under a non-commercial licence. The core here is
-**stdlib-only C++17**: verified by compiling it in an empty directory with no `-I`
-flags at all, then linking it from pure C.
+**stdlib-only C++17** — six standard headers and nothing else. That is a CI job,
+not a claim: every push compiles the solver and its C ABI in an empty directory
+with **no `-I` flags at all** under `-Werror`, then links them from pure C. A
+`pip install` needs no Eigen and no network; `cargo build` needs only a compiler.
 
 | | |
 |---|---|

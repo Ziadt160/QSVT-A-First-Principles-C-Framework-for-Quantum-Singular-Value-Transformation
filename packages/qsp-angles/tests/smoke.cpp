@@ -1,22 +1,29 @@
 // Standalone C++ smoke test for the extracted angle solvers (no Python needed).
 //
-//   g++ -O3 -std=c++17 -I/usr/include/eigen3 -I../src
-//       smoke.cpp ../src/QspAngleSolver.cpp ../src/SymQspAngleSolver.cpp
+// Default build -- stdlib only, no third-party headers, no -I beyond ../src:
+//
+//   g++ -O3 -std=c++17 -I../src smoke.cpp ../src/SymQspAngleSolver.cpp
 //       -o smoke && ./smoke
 //
-// Verifies the vendored solvers build against Eigen via <Eigen/Dense> (plus
-// <unsupported/Eigen/FFT> for sym_qsp) and reproduce known targets to machine
-// precision.
+// With the optional Eigen-dependent homotopy fallback:
+//
+//   g++ -O3 -std=c++17 -DQSP_ANGLES_WITH_HOMOTOPY -I/usr/include/eigen3
+//       -I../src smoke.cpp ../src/QspAngleSolver.cpp
+//       ../src/SymQspAngleSolver.cpp -o smoke && ./smoke
+//
+// Verifies the vendored solvers reproduce known targets to machine precision.
 
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
 #include <vector>
 
-#include "QspAngleSolver.hpp"
 #include "SymQspAngleSolver.hpp"
-
+#ifdef QSP_ANGLES_WITH_HOMOTOPY
+#include "QspAngleSolver.hpp"
 using qsvt::QspAngleSolver;
+#endif
+
 using qsvt::SymQspAngleSolver;
 
 static int check(const char* name, double residual, double tol)
@@ -40,17 +47,39 @@ int main()
     // FOUNDATIONAL INVARIANT: with all-zero phases the QSP response must equal
     // T_d(x) exactly. The homotopy starts from Phi = 0 == T_d and morphs to the
     // target, so if this drifts the whole solver's warm-start premise is wrong.
+    // (Checked through SymQspAngleSolver::response -- the two response
+    // implementations are the same Wx product, so this holds for both.)
     {
         double worst = 0.0;
         for (int d : {1, 2, 3, 5, 8}) {
             const std::vector<double> zeros(d + 1, 0.0);
             for (int i = 0; i <= 40; ++i) {
                 const double x = -1.0 + 2.0 * i / 40.0;
-                const double got = QspAngleSolver::response(x, zeros);
+                const double got = SymQspAngleSolver::response(x, zeros);
                 worst = std::max(worst, std::abs(got - chebyshevT(d, x)));
             }
         }
         fails += check("response(x,0)==T_d(x)", worst, 1e-12);
+    }
+
+#ifdef QSP_ANGLES_WITH_HOMOTOPY
+    // --- homotopy fallback (optional; needs Eigen) ---------------------------
+
+    // Both response implementations must agree bit-for-bit on the same phases --
+    // this is what licenses using either one interchangeably above.
+    {
+        double worst = 0.0;
+        for (const std::vector<double>& phi :
+             {std::vector<double>{0.3, -0.2},
+              std::vector<double>{0.1, 0.4, -0.7, 0.25},
+              std::vector<double>{-0.5, 0.0, 0.9, -0.15, 0.6, 0.05}}) {
+            for (int i = 0; i <= 40; ++i) {
+                const double x = -1.0 + 2.0 * i / 40.0;
+                worst = std::max(worst, std::abs(QspAngleSolver::response(x, phi)
+                                                 - SymQspAngleSolver::response(x, phi)));
+            }
+        }
+        fails += check("response impls agree", worst, 1e-15);
     }
 
     // Degree-1 odd target 0.7*x.
@@ -73,6 +102,7 @@ int main()
         auto r = QspAngleSolver(5).solve(f);
         fails += check("0.6*T_5 (d=5)", r.residual, 1e-6);
     }
+#endif // QSP_ANGLES_WITH_HOMOTOPY
 
     // --- sym_qsp (symmetric-QSP Newton method) ------------------------------
     // The phases it returns are in the SAME Re convention as QspAngleSolver, so

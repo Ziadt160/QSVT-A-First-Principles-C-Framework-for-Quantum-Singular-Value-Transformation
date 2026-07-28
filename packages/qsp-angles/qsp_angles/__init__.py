@@ -7,7 +7,10 @@ Two methods are available (select via ``method=``):
   arXiv:2307.12468; the algorithm behind pyqsp's ``sym_qsp``). It is strictly
   faster than the homotopy solver and reaches degree 1000+ at machine precision.
 * ``"homotopy"`` -- homotopy continuation + an exact analytic Jacobian
-  (Levenberg-Marquardt over Chebyshev nodes), kept as a fallback.
+  (Levenberg-Marquardt over Chebyshev nodes), kept as a fallback. It is the only
+  part of the package that needs a third-party library (Eigen), so it is **not
+  built by default**; check :data:`HAS_HOMOTOPY`. Everything else, including the
+  default solver and the embeddable C ABI, is stdlib-only C++17.
 
 Both compute the phase sequence ``Phi`` such that, in the **Wx convention**,
 
@@ -60,6 +63,7 @@ __all__ = [
     "response",
     "QuantumSignalProcessingPhases",
     "circuits",
+    "HAS_HOMOTOPY",
 ]
 
 __version__ = "0.1.0"
@@ -76,11 +80,28 @@ _DEFAULT_TOL = 1e-6
 # precision. ``"homotopy"`` (homotopy continuation + analytic Jacobian) is kept
 # as a fallback. Both return {phases, residual, converged} in the Wx / Re
 # convention, so they are interchangeable at the call site.
+#
+# The homotopy solver is the only part of the package that needs Eigen, so the
+# default build omits it (keeping the wheel dependency-free and offline-
+# buildable). ``HAS_HOMOTOPY`` reports whether this build has it; asking for it
+# when it is absent raises with the flag needed to get it.
 _DEFAULT_METHOD = "sym_qsp"
-_METHODS = {
-    "sym_qsp": "sym_qsp_poly_to_angles",
-    "homotopy": "poly_to_angles",
-}
+
+#: True when this build includes the Eigen-dependent homotopy fallback.
+HAS_HOMOTOPY = bool(getattr(_core, "has_homotopy", False))
+
+_METHODS = {"sym_qsp": "sym_qsp_poly_to_angles"}
+if HAS_HOMOTOPY:
+    _METHODS["homotopy"] = "poly_to_angles"
+
+_HOMOTOPY_UNAVAILABLE = (
+    "method='homotopy' is not available in this build. It is the only solver "
+    "that requires Eigen, so it is off by default to keep the package "
+    "dependency-free. Rebuild with it enabled:\n"
+    "    pip install -C cmake.define.QSP_ANGLES_WITH_HOMOTOPY=ON qsp-angles\n"
+    "The default method='sym_qsp' is faster and reaches higher degree, so this "
+    "is only needed to reproduce the fallback path."
+)
 
 
 @dataclass
@@ -235,6 +256,8 @@ def target2angles(
             or (when ``validate``) if the target violates ``|f| <= 1`` or parity.
     """
     if method not in _METHODS:
+        if method == "homotopy":
+            raise ValueError(_HOMOTOPY_UNAVAILABLE)
         raise ValueError(
             f"method must be one of {sorted(_METHODS)!r}, got {method!r}"
         )

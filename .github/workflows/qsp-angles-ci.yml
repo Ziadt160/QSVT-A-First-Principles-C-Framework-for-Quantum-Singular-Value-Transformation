@@ -3,18 +3,28 @@
 # Path-scoped so it only runs when the package changes. GitHub-hosted ubuntu
 # runners ship Python headers, so the pybind11 wheel builds here (unlike the
 # WSL dev box, which lacks python3-dev).
+#
+# Three jobs, by design:
+#   test                    -- the DEFAULT build. Deliberately does NOT install
+#                              Eigen, so if a third-party dependency ever creeps
+#                              back into the core, this job goes red.
+#   abi-no-third-party-deps -- compiles the C ABI with NO -I flags at all, in an
+#                              empty directory, and links it from pure C. This is
+#                              the executable form of the README's central claim.
+#   homotopy-optional       -- the opt-in Eigen path, so the fallback solver and
+#                              its `method="homotopy"` tests stay covered.
 name: qsp-angles CI
 
 on:
   push:
-    paths: ["packages/qsp-angles/**"]
+    paths: ["packages/qsp-angles/**", ".github/workflows/qsp-angles-ci.yml"]
   pull_request:
-    paths: ["packages/qsp-angles/**"]
+    paths: ["packages/qsp-angles/**", ".github/workflows/qsp-angles-ci.yml"]
   workflow_dispatch:
 
 jobs:
   test:
-    name: build + test (ubuntu-latest)
+    name: build + test (no third-party deps)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -23,27 +33,43 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install build deps (C++ toolchain, CMake, Eigen)
+      # NOTE: libeigen3-dev is deliberately NOT installed. The default build is
+      # stdlib-only C++17; installing Eigen here would hide a regression.
+      - name: Install build deps (C++ toolchain + CMake only)
         run: |
           sudo apt-get update
-          sudo apt-get install -y cmake g++ libeigen3-dev
+          sudo apt-get install -y cmake g++
 
-      - name: Install package with test extras
+      - name: Assert Eigen really is absent
+        run: |
+          if [ -d /usr/include/eigen3 ]; then
+            echo "::error::/usr/include/eigen3 exists; this job must run without Eigen"
+            exit 1
+          fi
+          echo "confirmed: no system Eigen on this runner"
+
+      - name: Install package with test extras (no Eigen, no network fetch)
         run: pip install ./packages/qsp-angles[test]
 
       - name: Run Python tests
         run: pytest packages/qsp-angles/tests
 
+      - name: Assert this build has no homotopy solver
+        run: |
+          python - <<'PY'
+          import qsp_angles as qa
+          assert qa.HAS_HOMOTOPY is False, "default build must not include the Eigen fallback"
+          print("confirmed: default build is sym_qsp only")
+          PY
+
       - name: Check vendored sources are in sync with repo root
         run: python packages/qsp-angles/scripts/check_vendored_sync.py
 
-      - name: Compile and run C++ smoke test
+      - name: Compile and run C++ smoke test (stdlib only)
         run: |
           g++ -O3 -std=c++17 -Wall -Wextra \
-            -I/usr/include/eigen3 \
             -I packages/qsp-angles/src \
             packages/qsp-angles/tests/smoke.cpp \
-            packages/qsp-angles/src/QspAngleSolver.cpp \
             packages/qsp-angles/src/SymQspAngleSolver.cpp \
             -o qsp_smoke
           ./qsp_smoke
@@ -51,12 +77,10 @@ jobs:
       - name: Independent cross-validation vs pyqsp
         run: |
           pip install pyqsp
-          g++ -O3 -march=native -DNDEBUG -std=c++17 \
-            -I/usr/include/eigen3 \
+          g++ -O3 -DNDEBUG -std=c++17 \
             -I packages/qsp-angles/src \
             packages/qsp-angles/bench/validate.cpp \
             packages/qsp-angles/src/SymQspAngleSolver.cpp \
-            packages/qsp-angles/src/QspAngleSolver.cpp \
             -o qsp_validate
           OMP_NUM_THREADS=1 OPENBLAS_NUM_THREADS=1 \
             python packages/qsp-angles/bench/validate_vs_pyqsp.py \
@@ -65,21 +89,98 @@ jobs:
       - name: Build + run the C ABI example (pure-C client links the C++ solver)
         run: |
           cd packages/qsp-angles/capi
-          g++ -O3 -std=c++17 -Wall -Wextra -I../src -I/usr/include/eigen3 -c \
-            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp
-          ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o
+          g++ -O3 -std=c++17 -Wall -Wextra -I../src -c \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp
+          ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o
           gcc -O2 -Wall -Wextra -std=c11 example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c
           ./example_c
 
       - name: Python-via-ctypes example (C ABI, no pybind)
         run: |
           cd packages/qsp-angles/capi
-          g++ -O3 -fPIC -shared -std=c++17 -I../src -I/usr/include/eigen3 \
-            qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp \
+          g++ -O3 -fPIC -shared -std=c++17 -I../src \
+            qsp_angles.cpp ../src/SymQspAngleSolver.cpp \
             -o libqsp_angles_c.so
           python example_ctypes.py ./libqsp_angles_c.so
 
-      - name: Build + run the Rust crate example (links the C ABI)
+      - name: Build + run the Rust crate example (links the C ABI, no system deps)
         run: |
           cd packages/qsp-angles/rust
           cargo run --quiet --example solve
+
+  abi-no-third-party-deps:
+    # The README claims the core is stdlib-only C++17, embeddable in a compiled
+    # stack. This job is that claim as a test: copy the sources into an empty
+    # directory, compile with NO -I flags whatsoever, and link from pure C.
+    name: C ABI compiles with zero include paths
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Compile in an empty directory with no -I flags at all
+        run: |
+          mkdir -p /tmp/bare && cd /tmp/bare
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/src/SymQspAngleSolver.hpp .
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/src/SymQspAngleSolver.cpp .
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/src/QspResult.hpp .
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/capi/qsp_angles.h .
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/capi/qsp_angles.cpp .
+          cp "$GITHUB_WORKSPACE"/packages/qsp-angles/capi/example_c.c .
+
+          # No -I. No -L. Nothing installed. If any third-party header has crept
+          # into the core or the ABI, this fails to compile.
+          g++ -O3 -std=c++17 -Wall -Wextra -Werror -c qsp_angles.cpp SymQspAngleSolver.cpp
+          ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o
+          gcc -O2 -std=c11 -Wall -Wextra -Werror example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c
+          ./example_c
+
+      - name: Report the actual dependency set
+        run: |
+          cd /tmp/bare
+          echo "includes reachable from the ABI translation units:"
+          grep -h '^#include' SymQspAngleSolver.hpp SymQspAngleSolver.cpp qsp_angles.cpp \
+            | sort -u
+
+  homotopy-optional:
+    # The Eigen-dependent fallback is off by default; this keeps it covered.
+    name: opt-in homotopy fallback (with Eigen)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install build deps (including Eigen)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cmake g++ libeigen3-dev
+
+      - name: Install package with the homotopy solver enabled
+        run: |
+          pip install -C cmake.define.QSP_ANGLES_WITH_HOMOTOPY=ON \
+            './packages/qsp-angles[test]'
+
+      - name: Assert this build DOES have the homotopy solver
+        run: |
+          python - <<'PY'
+          import qsp_angles as qa
+          assert qa.HAS_HOMOTOPY is True, "opt-in build must include the fallback"
+          r = qa.target2angles(lambda x: 0.7 * x, degree=1, method="homotopy")
+          assert r.converged, r
+          print("confirmed: homotopy solver present, residual", r.residual)
+          PY
+
+      - name: Run Python tests (homotopy parametrisations now active)
+        run: pytest packages/qsp-angles/tests
+
+      - name: C++ smoke test with the fallback (both response impls must agree)
+        run: |
+          g++ -O3 -std=c++17 -Wall -Wextra -DQSP_ANGLES_WITH_HOMOTOPY \
+            -I/usr/include/eigen3 -I packages/qsp-angles/src \
+            packages/qsp-angles/tests/smoke.cpp \
+            packages/qsp-angles/src/SymQspAngleSolver.cpp \
+            packages/qsp-angles/src/QspAngleSolver.cpp \
+            -o qsp_smoke_homotopy
+          ./qsp_smoke_homotopy

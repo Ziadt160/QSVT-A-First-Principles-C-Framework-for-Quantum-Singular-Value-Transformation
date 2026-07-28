@@ -12,22 +12,19 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
-# Eigen: system install, else fetch (header-only) for portability.
-find_package(Eigen3 3.3 NO_MODULE QUIET)
-if(NOT Eigen3_FOUND)
-  include(FetchContent)
-  FetchContent_Declare(Eigen3
-    GIT_REPOSITORY https://gitlab.com/libeigen/eigen.git
-    GIT_TAG 3.4.0 GIT_SHALLOW TRUE)
-  set(EIGEN_BUILD_DOC OFF CACHE BOOL "" FORCE)
-  set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-  FetchContent_MakeAvailable(Eigen3)
-endif()
+# NO THIRD-PARTY DEPENDENCIES -- deliberately.
+#
+# The C ABI wraps SymQspAngleSolver, which is stdlib-only C++17. There is no
+# find_package() and no FetchContent here: this library must build on a machine
+# with nothing installed but a C++17 compiler, offline. The Eigen-dependent
+# homotopy fallback (QspAngleSolver) is NOT part of the ABI and is not compiled.
+#
+# Enforced by the `abi-no-third-party-deps` CI job, which compiles these sources
+# with no -I flags at all.
 
 set(QSP_SRC
   qsp_angles.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../src/SymQspAngleSolver.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/../src/QspAngleSolver.cpp)
+  ${CMAKE_CURRENT_SOURCE_DIR}/../src/SymQspAngleSolver.cpp)
 
 # Static and shared flavors of the C ABI.
 add_library(qsp_angles_c_static STATIC ${QSP_SRC})
@@ -35,7 +32,6 @@ add_library(qsp_angles_c_shared SHARED ${QSP_SRC})
 foreach(t qsp_angles_c_static qsp_angles_c_shared)
   target_include_directories(${t} PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}
                                   PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/../src)
-  target_link_libraries(${t} PRIVATE Eigen3::Eigen)
   set_target_properties(${t} PROPERTIES OUTPUT_NAME qsp_angles_c)
 endforeach()
 

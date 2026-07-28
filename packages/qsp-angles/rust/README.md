@@ -19,20 +19,19 @@ Phases are the `degree + 1` full symmetric sequence in the **Wx convention**
 
 ## Build requirements
 
-`build.rs` compiles the C++ core via the [`cc`](https://crates.io/crates/cc)
-crate, so you need:
+A C++17 compiler (`g++`/`clang++`). That is the whole list.
 
-- a C++17 compiler (`g++`/`clang++`), and
-- **Eigen** headers (header-only). It looks at `$EIGEN_INCLUDE`, then
-  `/usr/include/eigen3` (Debian/Ubuntu `libeigen3-dev`).
+`build.rs` compiles the C++ core via the [`cc`](https://crates.io/crates/cc)
+crate. The solver it wraps is stdlib-only C++17 — no Eigen, no headers to
+install, no network — so this works on a bare machine:
 
 ```bash
-# default Eigen location
 cargo run --example solve
-
-# explicit Eigen location
-EIGEN_INCLUDE=/path/to/eigen cargo run --example solve
 ```
+
+(The Eigen-dependent homotopy fallback is not part of the C ABI and is not
+compiled here. It used to be, which forced every Rust consumer to install Eigen
+for code the ABI never called.)
 
 The C++ sources are pulled from the sibling `../capi` and `../src` directories of
 this repository; published as a standalone crate they would be vendored in.
@@ -41,9 +40,8 @@ this repository; published as a standalone crate they would be vendored in.
 
 The underlying C ABI is verified (the C and ctypes clients reproduce `0.8*T_5` to
 ~1e-15). These Rust bindings are a thin, idiomatic wrapper over that ABI; the FFI
-signatures mirror [`capi/qsp_angles.h`](../capi/qsp_angles.h). They have not yet
-been compiled in CI (no Rust toolchain on the dev box) — `cargo test` / `cargo
-run --example solve` on a machine with Rust + Eigen is the remaining check.
+signatures mirror [`capi/qsp_angles.h`](../capi/qsp_angles.h). `cargo run
+--example solve` runs in CI.
 
 ## API
 

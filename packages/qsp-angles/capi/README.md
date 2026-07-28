@@ -37,10 +37,10 @@ ctest --test-dir build        # runs the pure-C example
 ### By hand (shows the C-links-C++ story)
 
 ```bash
-# Compile the C++ side (impl + solver) once:
-g++ -O3 -std=c++17 -I../src -I/usr/include/eigen3 -c \
-    qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp
-ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o
+# Compile the C++ side (impl + solver) once. No -I beyond ../src: the solver is
+# stdlib-only C++17, so there is no third-party header to point at.
+g++ -O3 -std=c++17 -I../src -c qsp_angles.cpp ../src/SymQspAngleSolver.cpp
+ar rcs libqsp_angles_c.a qsp_angles.o SymQspAngleSolver.o
 
 # Compile + link a PURE C client (note: gcc, not g++):
 gcc -O2 example_c.c -L. -lqsp_angles_c -lstdc++ -lm -o example_c

@@ -9,16 +9,29 @@ def _T(d, x):
     return np.cos(d * np.arccos(np.clip(x, -1.0, 1.0)))
 
 
+# The homotopy fallback is the only Eigen-dependent piece and is off by default,
+# so parametrize over whatever this build actually shipped.
+METHODS = ["sym_qsp"] + (["homotopy"] if qa.HAS_HOMOTOPY else [])
+
+
 def test_core_importable():
     # The compiled extension must be present and importable.
     import qsp_angles._core as core
 
-    assert hasattr(core, "poly_to_angles")
     assert hasattr(core, "sym_qsp_poly_to_angles")
     assert hasattr(core, "response")
+    # poly_to_angles exists iff this build included the homotopy fallback.
+    assert hasattr(core, "poly_to_angles") == qa.HAS_HOMOTOPY
 
 
-@pytest.mark.parametrize("method", ["sym_qsp", "homotopy"])
+@pytest.mark.skipif(qa.HAS_HOMOTOPY, reason="build includes the homotopy fallback")
+def test_homotopy_absence_is_actionable():
+    # Asking for a solver this build lacks must say how to get it, not KeyError.
+    with pytest.raises(ValueError, match="QSP_ANGLES_WITH_HOMOTOPY"):
+        qa.target2angles(lambda x: 0.7 * x, degree=1, method="homotopy")
+
+
+@pytest.mark.parametrize("method", METHODS)
 def test_methods_converge_odd_degree5(method):
     # Both solvers must converge on the same odd degree-5 target 0.6*T_5.
     f = lambda x: 0.6 * _T(5, x)
@@ -30,7 +43,7 @@ def test_methods_converge_odd_degree5(method):
         assert abs(qa.response(x, r.phases) - f(x)) < 1e-6
 
 
-@pytest.mark.parametrize("method", ["sym_qsp", "homotopy"])
+@pytest.mark.parametrize("method", METHODS)
 def test_methods_converge_even_degree2(method):
     # Both solvers must converge on the same even degree-2 target 0.5*T_2.
     f = lambda x: 0.5 * _T(2, x)

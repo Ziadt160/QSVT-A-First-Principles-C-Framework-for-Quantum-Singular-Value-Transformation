@@ -1,13 +1,15 @@
 /* example_c.c - a PURE C program using the qsp-angles C ABI.
  *
  * This file is compiled by a C compiler (gcc/clang) and knows nothing about
- * C++, Eigen, or Python. It links the qsp-angles C API and solves for the QSP
- * phases of a target polynomial -- the proof that the solver is embeddable.
+ * C++ or Python. It links the qsp-angles C API and solves for the QSP phases of
+ * a target polynomial -- the proof that the solver is embeddable.
+ *
+ * Nothing here needs a third-party library: the solver behind the ABI is
+ * stdlib-only C++17, so the C++ half compiles with no -I beyond ../src.
  *
  * Build (see capi/README.md):
- *   g++ -O3 -std=c++17 -I../src -I/usr/include/eigen3 -c qsp_angles.cpp \
- *       ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp
- *   gcc -O2 example_c.c qsp_angles.o SymQspAngleSolver.o QspAngleSolver.o \
+ *   g++ -O3 -std=c++17 -I../src -c qsp_angles.cpp ../src/SymQspAngleSolver.cpp
+ *   gcc -O2 example_c.c qsp_angles.o SymQspAngleSolver.o \
  *       -lstdc++ -lm -o example_c && ./example_c
  */
 #include <math.h>

@@ -5,10 +5,11 @@ prebuilt shared library and Python's standard `ctypes`. It is the
 "Python-without-pybind" integration path, and a quick way to use the solver from
 Python on a box where the wheel can't build.
 
-Build the shared library first (see capi/README.md), e.g.:
+Build the shared library first (see capi/README.md). No third-party headers are
+needed — the solver behind the ABI is stdlib-only C++17:
 
-    g++ -O3 -fPIC -shared -std=c++17 -I../src -I/usr/include/eigen3 \
-        qsp_angles.cpp ../src/SymQspAngleSolver.cpp ../src/QspAngleSolver.cpp \
+    g++ -O3 -fPIC -shared -std=c++17 -I../src \
+        qsp_angles.cpp ../src/SymQspAngleSolver.cpp \
         -o libqsp_angles_c.so
 
     python example_ctypes.py ./libqsp_angles_c.so

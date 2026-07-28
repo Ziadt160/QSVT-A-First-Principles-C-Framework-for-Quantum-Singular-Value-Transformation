@@ -9,8 +9,8 @@ keywords = ["quantum", "qsp", "qsvt", "phase-factors", "angle-finding"]
 categories = ["science", "api-bindings"]
 links = "qsp_angles_c"
 
-# build.rs compiles the C++ core + C ABI via the `cc` crate. Eigen headers must
-# be available: it looks at $EIGEN_INCLUDE, then /usr/include/eigen3. See README.
+# build.rs compiles the C++ core + C ABI via the `cc` crate. The only build
+# requirement is a C++17 compiler -- the solver is stdlib-only. See README.
 [build-dependencies]
 cc = "1.0"
 
